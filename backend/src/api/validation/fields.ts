@@ -122,3 +122,22 @@ export const newPasswordField = passwordInputField.pipe(
 export const uuidParam = z.uuid('Must be a valid id');
 
 export const currencyField = z.enum(['EGP', 'USD']);
+
+/**
+ * Money as a DECIMAL STRING: "450.75", never the JSON number 450.75.
+ *
+ * JSON numbers are parsed into IEEE-754 floats before any code sees them,
+ * so 0.1 arrives as 0.1000000000000000055511151231257827. By the time
+ * decimal.js could help, precision is already gone. A string reaches the
+ * server exactly as typed. Positive, at most 2 decimal places.
+ */
+export const moneyAmountField = z
+  .string()
+  .regex(/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/, 'Amount must be a decimal string like "450.75"')
+  .refine((value) => !/^0(\.0{1,2})?$/.test(value), 'Amount must be greater than zero');
+
+/** An instant WITH its timezone offset. A bare "10:00" is ambiguous in
+ *  Egypt, where DST moves the clock by an hour. */
+export const instantField = z.iso
+  .datetime({ offset: true })
+  .transform((value) => new Date(value));

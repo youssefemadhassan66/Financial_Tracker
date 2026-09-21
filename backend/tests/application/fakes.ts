@@ -3,6 +3,7 @@ import type { User } from '../../src/domain/user.js';
 import { newUserId, type UserId } from '../../src/domain/ids.js';
 import { ConflictError } from '../../src/application/errors.js';
 import type { Clock } from '../../src/application/ports/clock.js';
+import type { NewCategory } from '../../src/application/ports/finance.js';
 import type {
   DeviceKeyRecord,
   DeviceKeyRepository,
@@ -85,11 +86,14 @@ export class InMemoryUserRepository implements UserRepository {
   async findById(id: UserId): Promise<User | null> {
     return this.users.get(id) ?? null;
   }
-  async create(user: User): Promise<void> {
+  readonly initialCategories = new Map<string, readonly NewCategory[]>();
+
+  async create(user: User, initialCategories: readonly NewCategory[]): Promise<void> {
     if ((await this.findByEmail(user.email)) !== null) {
       throw new ConflictError('An account with this email already exists');
     }
     this.users.set(user.id, user);
+    this.initialCategories.set(user.id, initialCategories);
   }
 }
 
