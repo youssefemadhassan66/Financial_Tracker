@@ -70,6 +70,28 @@ export class Money {
     return new Money(result, this.currency);
   }
 
+  /**
+   * Multiplies by numerator/denominator, rounding HALF-UP to 2 places.
+   * e.g. a weekly charge's monthly equivalent is amount.scale(52, 12).
+   *
+   * The ONLY operation on Money that rounds, and it says so in its name
+   * and here. 20.00 USD / 12 is 1.6666… — someone has to decide what
+   * happens to the remainder, and hiding that decision inside a
+   * general-purpose multiply() is how cents quietly go missing.
+   * Multiply first, divide last, so the error is introduced once.
+   */
+  scale(numerator: number, denominator: number): Money {
+    if (!Number.isInteger(numerator) || !Number.isInteger(denominator) || numerator < 0 || denominator <= 0) {
+      throw new DomainError('Money can only be scaled by a non-negative whole-number ratio');
+    }
+    const scaled = this.amount.times(numerator).dividedBy(denominator).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    return new Money(scaled, this.currency);
+  }
+
+  isZero(): boolean {
+    return this.amount.isZero();
+  }
+
   isGreaterThan(other: Money): boolean {
     this.assertSameCurrency(other);
     return this.amount.greaterThan(other.amount);

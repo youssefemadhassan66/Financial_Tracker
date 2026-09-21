@@ -13,12 +13,34 @@ import {
   RevokeDeviceKey,
 } from '../application/devices/device-keys.js';
 import { StoreRawSms } from '../application/ingest/store-raw-sms.js';
+import {
+  CreateAccount,
+  CreateCategory,
+  ListAccounts,
+  ListCategories,
+} from '../application/finance/categories-and-accounts.js';
+import { ListTransactions, RecordTransaction, RecordTransfer } from '../application/finance/transactions.js';
+import { GetCategoryAnalytics } from '../application/analytics/category-analytics.js';
+import {
+  ChangeSubscriptionStatus,
+  CreateSubscription,
+  GetSubscriptionSummary,
+  ListSubscriptions,
+} from '../application/subscriptions/subscriptions.js';
 import type { AccessTokenService } from '../application/ports/security.js';
 import { getPrismaClient } from '../infrastructure/persistence/prisma-client.js';
 import { PrismaUserRepository } from '../infrastructure/persistence/prisma-user-repository.js';
 import { PrismaRefreshTokenRepository } from '../infrastructure/persistence/prisma-refresh-token-repository.js';
 import { PrismaDeviceKeyRepository } from '../infrastructure/persistence/prisma-device-key-repository.js';
 import { PrismaRawMessageRepository } from '../infrastructure/persistence/prisma-raw-message-repository.js';
+import {
+  PrismaAccountRepository,
+  PrismaAnalyticsQueries,
+  PrismaCategoryRepository,
+  PrismaSubscriptionRepository,
+  PrismaTransactionRepository,
+  PrismaUserSettingsRepository,
+} from '../infrastructure/persistence/prisma-finance-repositories.js';
 import { Argon2PasswordHasher } from '../infrastructure/security/argon2-password-hasher.js';
 import { JoseAccessTokenService } from '../infrastructure/security/jose-access-token-service.js';
 import { HmacOpaqueTokenService } from '../infrastructure/security/hmac-opaque-token-service.js';
@@ -49,6 +71,18 @@ export interface Container {
   revokeDeviceKey: RevokeDeviceKey;
   authenticateDevice: AuthenticateDevice;
   storeRawSms: StoreRawSms;
+  listCategories: ListCategories;
+  createCategory: CreateCategory;
+  listAccounts: ListAccounts;
+  createAccount: CreateAccount;
+  recordTransaction: RecordTransaction;
+  recordTransfer: RecordTransfer;
+  listTransactions: ListTransactions;
+  getCategoryAnalytics: GetCategoryAnalytics;
+  createSubscription: CreateSubscription;
+  listSubscriptions: ListSubscriptions;
+  changeSubscriptionStatus: ChangeSubscriptionStatus;
+  getSubscriptionSummary: GetSubscriptionSummary;
 }
 
 export function buildContainer(
@@ -62,6 +96,12 @@ export function buildContainer(
   const refreshTokens = new PrismaRefreshTokenRepository(prisma);
   const deviceKeys = new PrismaDeviceKeyRepository(prisma);
   const rawMessages = new PrismaRawMessageRepository(prisma);
+  const categories = new PrismaCategoryRepository(prisma);
+  const accounts = new PrismaAccountRepository(prisma);
+  const transactions = new PrismaTransactionRepository(prisma);
+  const settings = new PrismaUserSettingsRepository(prisma);
+  const subscriptions = new PrismaSubscriptionRepository(prisma);
+  const analytics = new PrismaAnalyticsQueries(prisma);
 
   const passwords = new Argon2PasswordHasher();
   const accessTokens = new JoseAccessTokenService(config.jwtAccessSecret, config.accessTokenTtlSeconds, clock);
@@ -82,5 +122,17 @@ export function buildContainer(
     revokeDeviceKey: new RevokeDeviceKey(deviceKeys, clock),
     authenticateDevice: new AuthenticateDevice(deviceKeys, opaqueTokens, clock),
     storeRawSms: new StoreRawSms(rawMessages, clock),
+    listCategories: new ListCategories(categories),
+    createCategory: new CreateCategory(categories),
+    listAccounts: new ListAccounts(accounts),
+    createAccount: new CreateAccount(accounts),
+    recordTransaction: new RecordTransaction(accounts, categories, transactions, settings),
+    recordTransfer: new RecordTransfer(accounts, transactions),
+    listTransactions: new ListTransactions(transactions),
+    getCategoryAnalytics: new GetCategoryAnalytics(analytics, categories, clock),
+    createSubscription: new CreateSubscription(subscriptions, categories, accounts, clock),
+    listSubscriptions: new ListSubscriptions(subscriptions, clock),
+    changeSubscriptionStatus: new ChangeSubscriptionStatus(subscriptions, clock),
+    getSubscriptionSummary: new GetSubscriptionSummary(subscriptions, clock),
   };
 }

@@ -65,6 +65,24 @@ enum RawMessageStatus {
   ignored
 }
 
+enum CategoryKind {
+  spending
+  income
+}
+
+enum BillingCycle {
+  weekly
+  monthly
+  quarterly
+  yearly
+}
+
+enum SubscriptionStatus {
+  active
+  paused
+  cancelled
+}
+
 enum Currency {
   EGP
   USD
@@ -91,6 +109,7 @@ model User {
   refreshTokens RefreshToken[]
   deviceKeys    DeviceKey[]
   budgets       Budget[]
+  subscriptions Subscription[]
 
   @@map("users")
 }
@@ -187,8 +206,9 @@ model Account {
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  creditCard   CreditCardDetails?
-  transactions Transaction[]
+  creditCard    CreditCardDetails?
+  transactions  Transaction[]
+  subscriptions Subscription[]
 
   @@index([userId])
   @@index([userId, last4])
@@ -236,13 +256,24 @@ model Category {
   /// Seeded defaults the user may rename but not delete.
   isSystem Boolean @default(false) @map("is_system")
 
+  /// Spending categories describe where money went; income categories
+  /// describe where it came from. Lets pickers show only the relevant set.
+  kind CategoryKind @default(spending)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  transactions Transaction[]
-  merchantMap  MerchantCategoryMap[]
-  budgets      Budget[]
+  transactions  Transaction[]
+  merchantMap   MerchantCategoryMap[]
+  budgets       Budget[]
+  subscriptions Subscription[]
 
-  @@unique([userId, name, parentId])
+  // Names are unique per user, regardless of parent.
+  //
+  // This replaced @@unique([userId, name, parentId]), which LOOKED like it
+  // prevented duplicates but did not: in SQL NULL is never equal to NULL,
+  // so two top-level categories (parentId NULL) named "Food" never
+  // conflicted. Verified by inserting two and watching both succeed.
+  @@unique([userId, name])
   @@index([userId])
   @@map("categories")
 }
@@ -318,6 +349,11 @@ model Transaction {
   rawMessage   RawMessage? @relation(fields: [rawMessageId], references: [id], onDelete: SetNull)
 
   trade Trade?
+
+  /// Set when this charge is a payment of a known subscription. Filled
+  /// in by the SMS parser once it matches merchant keys (a later module).
+  subscriptionId String?       @map("subscription_id") @db.Uuid
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -491,3 +527,47 @@ model PriceSnapshot {
   @@index([symbol, asOf])
   @@map("price_snapshots")
 }
+
+// ---------------------------------------------------------------------
+// Subscriptions — recurring charges like Netflix or Claude
+// ---------------------------------------------------------------------
+
+model Subscription {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name String
+
+  /// Normalized merchant name, used later to match incoming charges.
+  merchantKey String @map("merchant_key")
+
+  amount   Decimal      @db.Decimal(18, 2)
+  currency Currency
+  cycle    BillingCycle
+
+  /// The first billing date. Every later date is COMPUTED from this and
+  /// the cycle rather than stored, so it can never drift out of sync.
+  anchorDate DateTime @map("anchor_date") @db.Date
+
+  status      SubscriptionStatus @default(active)
+  cancelledAt DateTime?          @map("cancelled_at") @db.Timestamptz(3)
+
+  categoryId String?   @map("category_id") @db.Uuid
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  /// Which card or wallet pays it.
+  accountId String?  @map("account_id") @db.Uuid
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  notes String?
+
+  transactions Transaction[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([userId, status])
+  @@map("subscriptions")
+}
+

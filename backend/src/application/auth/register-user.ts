@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { User } from '../../domain/user.js';
 import { newUserId } from '../../domain/ids.js';
 import type { Currency } from '../../domain/currency.js';
+import { DEFAULT_CATEGORIES } from '../../domain/default-categories.js';
 import { ConflictError } from '../errors.js';
 import type { UserRepository } from '../ports/repositories.js';
 import type { PasswordHasher } from '../ports/security.js';
@@ -49,7 +50,10 @@ export class RegisterUser {
       defaultCurrency: input.defaultCurrency,
     });
 
-    await this.users.create(user);
+    await this.users.create(
+      user,
+      DEFAULT_CATEGORIES.map((c) => ({ name: c.name, kind: c.kind, icon: c.icon, color: null, isSystem: true })),
+    );
 
     const tokens = await this.sessions.issue(user.id, randomUUID(), context);
     return { user: toUserDto(user), tokens };

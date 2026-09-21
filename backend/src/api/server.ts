@@ -9,6 +9,7 @@ import { rejectDangerousKeys } from './middleware/reject-dangerous-keys.js';
 import { errorHandler, notFound } from './middleware/error-handler.js';
 import { authRouter } from './routes/auth.routes.js';
 import { devicesRouter, ingestRouter } from './routes/devices.routes.js';
+import { financeRouter } from './routes/finance.routes.js';
 
 /**
  * Builds the Express application. Kept separate from index.ts so tests
@@ -51,6 +52,7 @@ export function createServer(container: Container, config: AppConfig): Express {
   app.use('/api/auth', authRouter(container, config, limits));
   app.use('/api/devices', devicesRouter(container));
   app.use('/api/ingest', ingestRouter(container, limits));
+  app.use('/api', financeRouter(container));
 
   app.use(notFound);
   app.use(errorHandler);

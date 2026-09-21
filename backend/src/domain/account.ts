@@ -56,6 +56,13 @@ export class Account {
     return new Account(input, name);
   }
 
+  /** Rebuilds a stored account, re-validating it and keeping its archive state. */
+  static restore(input: CreateAccountInput, archivedAt: Date | null): Account {
+    const account = Account.create(input);
+    account.archivedAt = archivedAt;
+    return account;
+  }
+
   rename(name: string): void {
     const trimmed = name.trim();
     if (trimmed.length === 0) {

@@ -1,5 +1,6 @@
 import type { User } from '../../domain/user.js';
 import type { UserId } from '../../domain/ids.js';
+import type { NewCategory } from './finance.js';
 
 /**
  * Persistence ports. Each is shaped around what the use cases actually
@@ -10,9 +11,13 @@ import type { UserId } from '../../domain/ids.js';
 export interface UserRepository {
   findByEmail(normalizedEmail: string): Promise<User | null>;
   findById(id: UserId): Promise<User | null>;
-  /** Throws ConflictError if the email is already taken — including when
-   *  two registrations race past the application-level check. */
-  create(user: User): Promise<void>;
+  /**
+   * Creates the user together with their settings row and starter
+   * categories, in ONE statement — a user can never exist half set up.
+   * Throws ConflictError if the email is already taken, including when
+   * two registrations race past the application-level check.
+   */
+  create(user: User, initialCategories: readonly NewCategory[]): Promise<void>;
 }
 
 export interface RefreshTokenRecord {
