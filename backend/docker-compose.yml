@@ -1,0 +1,50 @@
+# Local development database.
+#
+# Run:   docker compose up -d
+# Stop:  docker compose down          (data survives)
+# Reset: docker compose down -v       (data DELETED — the -v drops the volume)
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: financial_app_db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-financial}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-financial}
+      POSTGRES_DB: ${POSTGRES_DB:-financial_app}
+
+    ports:
+      # host:container. Bound to 127.0.0.1 so the database is reachable
+      # from this machine only — without the prefix Docker publishes on
+      # 0.0.0.0 and anyone on your network (a cafe, a shared office)
+      # could reach it.
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+
+    volumes:
+      # A NAMED volume, not a bind mount to a host folder. Postgres needs
+      # POSIX file semantics that Windows bind mounts do not provide
+      # correctly, and a named volume also survives `docker compose down`.
+      #
+      # Mount at /var/lib/postgresql, NOT /var/lib/postgresql/data.
+      # Postgres 18+ images store data in a major-version subdirectory
+      # (…/18/docker) so that pg_upgrade can see both versions inside one
+      # mount. Mounting the old .../data path makes the container refuse
+      # to start. This changed in postgres:18 — most tutorials still show
+      # the old path.
+      - financial_app_pgdata:/var/lib/postgresql
+
+    healthcheck:
+      # `docker compose up` reports a container as running the moment the
+      # process starts, but Postgres is not accepting connections yet.
+      # Without this, the API starts first and fails to connect.
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-financial} -d ${POSTGRES_DB:-financial_app}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  financial_app_pgdata:
+    name: financial_app_pgdata
