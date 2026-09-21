@@ -7,7 +7,7 @@
     "dev": "tsx watch src/api/index.ts",
     "build": "tsc",
     "start": "node dist/api/index.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "lint": "eslint .",
     "test": "vitest run",
     "db:up": "docker compose up -d",

@@ -8,6 +8,7 @@ import type {
   MerchantKey,
   TransactionId,
   TransferGroupId,
+  UserId,
 } from './ids.js';
 
 export type TransactionDirection = 'debit' | 'credit';
@@ -15,6 +16,11 @@ export type TransactionSource = 'sms' | 'manual';
 
 export interface CreateTransactionInput {
   id: TransactionId;
+  /** Owner. Denormalized from the account on purpose: it lets every
+   *  query filter by user without joining accounts first, and a missing
+   *  tenancy filter is the kind of bug that leaks someone else's bank
+   *  history. */
+  userId: UserId;
   accountId: AccountId;
   amount: Money;
   direction: TransactionDirection;
@@ -49,6 +55,7 @@ export interface CreateTransactionInput {
  */
 export class Transaction {
   readonly id: TransactionId;
+  readonly userId: UserId;
   readonly accountId: AccountId;
   readonly amount: Money;
   readonly direction: TransactionDirection;
@@ -64,6 +71,7 @@ export class Transaction {
 
   private constructor(input: CreateTransactionInput) {
     this.id = input.id;
+    this.userId = input.userId;
     this.accountId = input.accountId;
     this.amount = input.amount;
     this.direction = input.direction;

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { Account } from '../../src/domain/account.js';
 import { DomainError } from '../../src/domain/errors.js';
-import { newAccountId } from '../../src/domain/ids.js';
+import { newAccountId, newUserId } from '../../src/domain/ids.js';
 
 function build(overrides: Partial<Parameters<typeof Account.create>[0]> = {}) {
   return {
     id: newAccountId('acc_1'),
+    userId: newUserId('usr_1'),
     name: 'CIB Current',
     type: 'checking' as const,
     currency: 'EGP' as const,

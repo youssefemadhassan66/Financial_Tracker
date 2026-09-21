@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Transaction } from '../../src/domain/transaction.js';
+import { User } from '../../src/domain/user.js';
 import { Money } from '../../src/domain/money.js';
 import { DomainError } from '../../src/domain/errors.js';
 import {
@@ -8,11 +9,13 @@ import {
   newMerchantKey,
   newTransactionId,
   newTransferGroupId,
+  newUserId,
 } from '../../src/domain/ids.js';
 
 function build(overrides: Partial<Parameters<typeof Transaction.create>[0]> = {}) {
   return {
     id: newTransactionId('txn_1'),
+    userId: newUserId('usr_1'),
     accountId: newAccountId('acc_1'),
     amount: Money.create('45.50', 'EGP'),
     direction: 'debit' as const,
@@ -240,5 +243,29 @@ describe('Transaction — real scenarios', () => {
     expect(spending).toHaveLength(1);
     expect(spending[0]?.amount.toDecimalString()).toBe('25.00');
     expect(buy.transferGroupId).toBe(groupId);
+  });
+});
+
+describe('Transaction — tenancy', () => {
+  const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$aBcDeFgHiJkLmNoPqRsTuV';
+
+  it("refuses to hand one user another user's transaction", () => {
+    const owner = User.create({
+      id: newUserId('usr_1'),
+      email: 'youssef@example.com',
+      passwordHash: HASH,
+      defaultCurrency: 'EGP',
+    });
+    const intruder = User.create({
+      id: newUserId('usr_2'),
+      email: 'someone@example.com',
+      passwordHash: HASH,
+      defaultCurrency: 'EGP',
+    });
+
+    const txn = Transaction.create(build({ userId: newUserId('usr_1') }));
+
+    expect(() => owner.assertOwns(txn.userId)).not.toThrow();
+    expect(() => intruder.assertOwns(txn.userId)).toThrow(DomainError);
   });
 });

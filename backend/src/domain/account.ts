@@ -2,10 +2,12 @@ import { DomainError } from './errors.js';
 import { canHoldPositions, isLiabilityAccount } from './account-type.js';
 import type { AccountType } from './account-type.js';
 import type { Currency } from './currency.js';
-import type { AccountId } from './ids.js';
+import type { AccountId, UserId } from './ids.js';
 
 export interface CreateAccountInput {
   id: AccountId;
+  /** Owner. Every account belongs to exactly one user. */
+  userId: UserId;
   name: string;
   type: AccountType;
   currency: Currency;
@@ -25,6 +27,7 @@ export interface CreateAccountInput {
  */
 export class Account {
   readonly id: AccountId;
+  readonly userId: UserId;
   readonly type: AccountType;
   readonly currency: Currency;
   readonly last4: string | null;
@@ -34,6 +37,7 @@ export class Account {
 
   private constructor(input: CreateAccountInput, name: string) {
     this.id = input.id;
+    this.userId = input.userId;
     this.type = input.type;
     this.currency = input.currency;
     this.last4 = input.last4 ?? null;
