@@ -9,11 +9,10 @@ import { PrismaClient } from '@prisma/client';
  * The schema stays a pure structural description with no credential in
  * it, and the URL comes from the environment at startup.
  *
- * This file is the ONLY place in the codebase that imports
- * @prisma/client. Everything above it depends on repository interfaces
- * declared in the Application layer, so swapping Prisma for anything
- * else would touch this directory and nothing else. That is the whole
- * point of the dependency rule the ESLint zones enforce.
+ * Only src/infrastructure may import @prisma/client — ESLint's
+ * no-restricted-imports enforces that. Everything above depends on the
+ * repository interfaces declared in the Application layer, so swapping
+ * Prisma for anything else would touch this directory and nothing else.
  */
 
 function readDatabaseUrl(): string {
