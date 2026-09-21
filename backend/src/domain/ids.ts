@@ -20,6 +20,10 @@ export type TransactionId = Brand<string, 'TransactionId'>;
 export type CategoryId = Brand<string, 'CategoryId'>;
 export type AccountId = Brand<string, 'AccountId'>;
 
+/** Links the two (or more) rows that make up one movement of money:
+ *  the debit side and the credit side of a transfer or a trade. */
+export type TransferGroupId = Brand<string, 'TransferGroupId'>;
+
 /**
  * A MerchantKey is the NORMALIZED form of a merchant name, used to look
  * up a category. "CARREFOUR CAIRO #1234" and "Carrefour Maadi" should
@@ -37,6 +41,9 @@ export function newCategoryId(value: string): CategoryId {
 }
 export function newAccountId(value: string): AccountId {
   return value as AccountId;
+}
+export function newTransferGroupId(value: string): TransferGroupId {
+  return value as TransferGroupId;
 }
 export function newMerchantKey(value: string): MerchantKey {
   return value as MerchantKey;
