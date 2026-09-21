@@ -132,6 +132,28 @@ function toAccount(row: {
 // Transactions
 // ---------------------------------------------------------------------
 
+/** The one mapping from a domain Transaction to its table row. Shared by
+ *  every write path so a new column cannot be saved by one and forgotten
+ *  by another. */
+export function toTransactionRow(t: Transaction) {
+  return {
+    id: t.id,
+    userId: t.userId,
+    accountId: t.accountId,
+    amount: t.amount.toDecimalString(),
+    currency: t.amount.getCurrency(),
+    direction: t.direction,
+    kind: t.kind,
+    countsAsSpending: t.getCountsAsSpending(),
+    categoryId: t.getCategoryId(),
+    merchantKey: t.merchantKey,
+    merchantRaw: t.merchantRaw,
+    occurredAt: t.occurredAt,
+    source: t.source,
+    transferGroupId: t.transferGroupId,
+  };
+}
+
 export class PrismaTransactionRepository implements TransactionRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -140,26 +162,7 @@ export class PrismaTransactionRepository implements TransactionRepository {
     // transaction: if the second leg of a transfer fails, the first is
     // rolled back. No money appears from nowhere or vanishes.
     await this.prisma.$transaction(
-      transactions.map((t) =>
-        this.prisma.transaction.create({
-          data: {
-            id: t.id,
-            userId: t.userId,
-            accountId: t.accountId,
-            amount: t.amount.toDecimalString(),
-            currency: t.amount.getCurrency(),
-            direction: t.direction,
-            kind: t.kind,
-            countsAsSpending: t.getCountsAsSpending(),
-            categoryId: t.getCategoryId(),
-            merchantKey: t.merchantKey,
-            merchantRaw: t.merchantRaw,
-            occurredAt: t.occurredAt,
-            source: t.source,
-            transferGroupId: t.transferGroupId,
-          },
-        }),
-      ),
+      transactions.map((t) => this.prisma.transaction.create({ data: toTransactionRow(t) })),
     );
   }
 

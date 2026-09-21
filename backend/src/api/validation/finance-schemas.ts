@@ -90,3 +90,15 @@ export const subscriptionActionParams = z.strictObject({
   id: uuidParam,
   action: z.enum(['pause', 'resume', 'cancel']),
 });
+
+// --- stored SMS ----------------------------------------------------------
+
+export const smsListQuery = z.strictObject({
+  status: z.enum(['pending', 'parsed', 'unparsed', 'ignored']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export const smsReprocessBody = z.strictObject({
+  /** The `next` value from the previous reprocess response. */
+  after: uuidParam.optional(),
+});

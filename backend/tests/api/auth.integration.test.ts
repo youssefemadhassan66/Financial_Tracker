@@ -225,7 +225,7 @@ suite('device keys and SMS ingest', () => {
 
     expect(first.status).toBe(201);
     expect(retry.status).toBe(200);
-    expect(retry.body).toEqual({ id: first.body.id, duplicate: true });
+    expect(retry.body).toEqual({ id: first.body.id, duplicate: true, processing: 'duplicate' });
   });
 
   it('stores an Arabic SMS body byte-for-byte', async () => {
