@@ -2,6 +2,14 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import importPlugin from 'eslint-plugin-import';
 
+// Third-party packages each layer is allowed to touch. Paired with the
+// folder zones below, this closes the gap those zones leave open: they
+// stop domain/ importing infrastructure/, but not domain/ importing
+// `express` or `@prisma/client` directly.
+const HTTP_PACKAGES = ['express', 'helmet', 'cors', 'cookie-parser', 'express-rate-limit', 'zod'];
+const INFRA_PACKAGES = ['@prisma/client', '@prisma/adapter-pg', 'pg', 'argon2', 'jose'];
+const restrict = (names, message) => names.map((name) => ({ name, message }));
+
 export default tseslint.config(
   { ignores: ['dist/**', 'node_modules/**'] },
 
@@ -71,6 +79,43 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-imports': 'error',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       eqeqeq: ['error', 'always'],
+
+      // Default for all of src/: domain and application may use NEITHER
+      // group. They are plain TypeScript that could run anywhere.
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            ...restrict(HTTP_PACKAGES, 'Only src/api may use HTTP and validation libraries.'),
+            ...restrict(INFRA_PACKAGES, 'Only src/infrastructure may use database and crypto libraries.'),
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/api/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: restrict(
+            INFRA_PACKAGES,
+            'The API layer reaches the database and crypto through use cases, never directly.',
+          ),
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['src/infrastructure/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { paths: restrict(HTTP_PACKAGES, 'Infrastructure must not depend on the HTTP layer.') },
+      ],
     },
   },
 );
