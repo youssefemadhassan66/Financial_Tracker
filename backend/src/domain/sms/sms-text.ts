@@ -83,6 +83,7 @@ const CURRENCY_TOKENS: ReadonlyMap<string, Currency> = new Map<string, Currency>
   ['جنيهاً', 'EGP'],
   ['ج.م', 'EGP'],
   ['ج.م.', 'EGP'],
+  ['جم', 'EGP'], // CIB InstaPay: "بمبلغ 800.00 جم"
   ['USD', 'USD'],
   ['US$', 'USD'],
   ['$', 'USD'],

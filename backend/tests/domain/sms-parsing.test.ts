@@ -82,6 +82,7 @@ describe('currencyFromSmsToken', () => {
     ['L.E', 'EGP'],
     ['جنيه', 'EGP'],
     ['ج.م', 'EGP'],
+    ['جم', 'EGP'],
     ['USD', 'USD'],
     ['$', 'USD'],
     ['دولار', 'USD'],

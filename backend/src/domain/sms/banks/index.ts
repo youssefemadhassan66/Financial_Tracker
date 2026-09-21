@@ -1,4 +1,5 @@
 import type { SmsCatalog, SmsIgnoreRule, SmsTemplate } from '../sms-template.js';
+import { CIB_IGNORE_RULES, CIB_TEMPLATES } from './cib.js';
 
 /**
  * One-time passwords and verification codes. They often quote an amount
@@ -13,14 +14,15 @@ const ONE_TIME_CODES: SmsIgnoreRule = {
 /**
  * Bank formats, most specific first within each bank.
  *
- * Empty until the per-bank templates land (CIB, NBE, Banque Misr). Until
- * then every SMS is stored and marked ignored (unknown sender). Nothing
- * is lost: `POST /api/sms/reprocess` re-reads every message that is not
- * yet a transaction, so they parse once the templates exist.
+ * Only CIB is supported (the only bank in use). Messages that arrived
+ * before a template existed are not lost: `POST /api/sms/reprocess`
+ * re-reads every message that is not yet a transaction.
  */
-const TEMPLATES: readonly SmsTemplate[] = [];
+const TEMPLATES: readonly SmsTemplate[] = [
+  ...CIB_TEMPLATES,
+];
 
 export const BANK_CATALOG: SmsCatalog = {
   templates: TEMPLATES,
-  ignoreRules: [ONE_TIME_CODES],
+  ignoreRules: [ONE_TIME_CODES, ...CIB_IGNORE_RULES],
 };
