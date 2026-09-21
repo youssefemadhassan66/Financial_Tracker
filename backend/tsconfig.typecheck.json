@@ -1,0 +1,17 @@
+{
+  // Typechecking config. The base tsconfig.json is the BUILD config and
+  // deliberately compiles only src/, so tests never reach dist/.
+  //
+  // But that also meant tests were never typechecked: vitest transpiles
+  // without checking types, so a type error in a test file was invisible.
+  // This config checks src AND tests together, and emits nothing.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // rootDir only constrains emit layout, and this config emits nothing.
+    // Leaving it as src/ would reject every test file as "not under
+    // rootDir", so widen it to the project root.
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "*.config.ts", "*.config.mts"]
+}

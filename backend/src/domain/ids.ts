@@ -16,6 +16,11 @@
  */
 type Brand<T, TBrand extends string> = T & { readonly __brand: TBrand };
 
+/** Every row in this app belongs to a user. The app is single-user in
+ *  practice today, but tenancy is baked in from the start — adding a
+ *  user_id column after real rows exist is a far harder migration. */
+export type UserId = Brand<string, 'UserId'>;
+
 export type TransactionId = Brand<string, 'TransactionId'>;
 export type CategoryId = Brand<string, 'CategoryId'>;
 export type AccountId = Brand<string, 'AccountId'>;
@@ -33,6 +38,9 @@ export type TransferGroupId = Brand<string, 'TransferGroupId'>;
  */
 export type MerchantKey = Brand<string, 'MerchantKey'>;
 
+export function newUserId(value: string): UserId {
+  return value as UserId;
+}
 export function newTransactionId(value: string): TransactionId {
   return value as TransactionId;
 }
