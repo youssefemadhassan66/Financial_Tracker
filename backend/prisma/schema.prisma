@@ -1,0 +1,493 @@
+// Prisma schema for the financial app.
+//
+// Naming: Prisma models are PascalCase in TypeScript, but @@map/@map
+// puts snake_case in Postgres, which is the SQL convention and keeps
+// hand-written queries readable.
+//
+// Money is Decimal @db.Decimal(18, 2) everywhere. Prisma returns these
+// as Decimal.js instances, which is exactly the type the domain's Money
+// value object already uses — no float ever touches an amount.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // No `url` here. Prisma 7 removed it from the schema — the connection
+  // string lives in prisma.config.ts for CLI commands, and the runtime
+  // client gets it via a driver adapter. Structure stays committed;
+  // credentials stay in .env.
+}
+
+// ---------------------------------------------------------------------
+// Enums
+//
+// Postgres enums rather than free text: the database itself rejects a
+// typo like 'expence', instead of storing it and breaking a report six
+// months later.
+// ---------------------------------------------------------------------
+
+enum AccountType {
+  checking
+  savings
+  cash
+  wallet
+  credit_card
+  brokerage
+}
+
+enum TransactionKind {
+  expense
+  income
+  transfer
+  trade
+  dividend
+  fee
+  interest
+  adjustment
+}
+
+enum TransactionDirection {
+  debit
+  credit
+}
+
+enum TransactionSource {
+  sms
+  manual
+}
+
+enum RawMessageStatus {
+  pending
+  parsed
+  unparsed
+  ignored
+}
+
+enum Currency {
+  EGP
+  USD
+}
+
+// ---------------------------------------------------------------------
+// Identity and auth
+// ---------------------------------------------------------------------
+
+model User {
+  id              String   @id @default(uuid()) @db.Uuid
+  email           String   @unique
+  passwordHash    String   @map("password_hash")
+  defaultCurrency Currency @default(EGP) @map("default_currency")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  settings      UserSettings?
+  accounts      Account[]
+  categories    Category[]
+  transactions  Transaction[]
+  merchantMap   MerchantCategoryMap[]
+  rawMessages   RawMessage[]
+  refreshTokens RefreshToken[]
+  deviceKeys    DeviceKey[]
+  budgets       Budget[]
+
+  @@map("users")
+}
+
+model UserSettings {
+  userId String @id @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Whether brokerage commissions and bank charges count toward the
+  /// spending total. Only the DEFAULT for new transactions — each
+  /// transaction stores its own counts_as_spending, so changing this
+  /// never rewrites history.
+  countFeesAsSpending Boolean @default(true) @map("count_fees_as_spending")
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("user_settings")
+}
+
+/// Refresh tokens are stored HASHED — a database leak must not hand the
+/// attacker working sessions.
+///
+/// Rotation with reuse detection: each use issues a new token and marks
+/// this one used. If an already-used token is presented again, the whole
+/// `familyId` is revoked, because replay is the signature of theft.
+model RefreshToken {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the token. The plaintext is returned to the client once
+  /// and never stored.
+  tokenHash String @unique @map("token_hash")
+
+  /// All tokens descended from one login. Revoked together on replay.
+  familyId String @map("family_id") @db.Uuid
+
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  /// Recorded to help spot a stolen token used from elsewhere. Not a
+  /// security control on its own — both are trivially spoofed.
+  userAgent String? @map("user_agent")
+  ipAddress String? @map("ip_address")
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+/// Credential for the phone SMS forwarder (MacroDroid), which cannot
+/// perform a login or token-refresh flow. Scoped to the ingest endpoint
+/// only — a device key must never be able to read transactions.
+model DeviceKey {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name    String
+  keyHash String @unique @map("key_hash")
+
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  rawMessages RawMessage[]
+
+  @@index([userId])
+  @@map("device_keys")
+}
+
+// ---------------------------------------------------------------------
+// Accounts
+// ---------------------------------------------------------------------
+
+model Account {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name     String
+  type     AccountType
+  currency Currency
+
+  /// Last 4 digits, used to route an incoming SMS to the right account.
+  last4 String? @db.VarChar(4)
+
+  /// Accounts are archived, never deleted — deleting one would orphan
+  /// the transaction history that still has to appear in past reports.
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creditCard   CreditCardDetails?
+  transactions Transaction[]
+
+  @@index([userId])
+  @@index([userId, last4])
+  @@map("accounts")
+}
+
+/// Separate table rather than nullable columns on `accounts`: a credit
+/// limit on a cash account is meaningless, and nullable columns let
+/// meaningless states exist. This makes "only credit cards have a credit
+/// limit" a fact the database enforces.
+model CreditCardDetails {
+  accountId String  @id @map("account_id") @db.Uuid
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  creditLimit Decimal? @map("credit_limit") @db.Decimal(18, 2)
+
+  /// Day of month the statement closes / payment is due (1-31).
+  statementDay Int? @map("statement_day") @db.SmallInt
+  dueDay       Int? @map("due_day") @db.SmallInt
+
+  /// Annual percentage rate, e.g. 39.5000 for 39.5%.
+  apr Decimal? @db.Decimal(7, 4)
+
+  @@map("credit_card_details")
+}
+
+// ---------------------------------------------------------------------
+// Categories
+// ---------------------------------------------------------------------
+
+model Category {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name  String
+  icon  String?
+  color String?
+
+  /// Self-relation for sub-categories (Transport > Uber).
+  parentId String?    @map("parent_id") @db.Uuid
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+
+  /// Seeded defaults the user may rename but not delete.
+  isSystem Boolean @default(false) @map("is_system")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  transactions Transaction[]
+  merchantMap  MerchantCategoryMap[]
+  budgets      Budget[]
+
+  @@unique([userId, name, parentId])
+  @@index([userId])
+  @@map("categories")
+}
+
+/// The learned merchant -> category mapping. Once you categorize
+/// "CARREFOUR" it is never asked again, which is what keeps LLM cost
+/// near zero after the first couple of weeks.
+model MerchantCategoryMap {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Normalized merchant name (uppercased, reference numbers stripped).
+  merchantKey String @map("merchant_key")
+
+  categoryId String   @map("category_id") @db.Uuid
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  /// 'user' beats 'llm' — an explicit correction must never be
+  /// overwritten by a later model guess.
+  source     String   @default("llm")
+  confidence Decimal? @db.Decimal(4, 3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([userId, merchantKey])
+  @@map("merchant_category_map")
+}
+
+// ---------------------------------------------------------------------
+// Transactions
+// ---------------------------------------------------------------------
+
+model Transaction {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Denormalized from the account so every query can filter by user
+  /// without a join. A missing tenancy filter leaks someone else's bank
+  /// history, so the column is kept as close to hand as possible.
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accountId String  @map("account_id") @db.Uuid
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  amount   Decimal              @db.Decimal(18, 2)
+  currency Currency
+  direction TransactionDirection
+
+  /// WHAT HAPPENED — an immutable fact.
+  kind TransactionKind
+
+  /// HOW IT REPORTS — the user's choice, stored per row so changing a
+  /// preference never rewrites past totals. Spending reports filter on
+  /// this, never on `kind`.
+  countsAsSpending Boolean @map("counts_as_spending")
+
+  categoryId String?   @map("category_id") @db.Uuid
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  merchantKey String  @map("merchant_key")
+  /// Merchant text exactly as received — may be Arabic, e.g. "كارفور المعادي".
+  merchantRaw String  @map("merchant_raw")
+
+  occurredAt DateTime          @map("occurred_at") @db.Timestamptz(3)
+  source     TransactionSource
+
+  /// Links the two sides of a transfer or trade. Both rows share it.
+  transferGroupId String? @map("transfer_group_id") @db.Uuid
+
+  rawMessageId String?     @unique @map("raw_message_id") @db.Uuid
+  rawMessage   RawMessage? @relation(fields: [rawMessageId], references: [id], onDelete: SetNull)
+
+  trade Trade?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // Every report is "this user, this date range", so userId leads each
+  // index. Postgres can only use a composite index left-to-right.
+  @@index([userId, occurredAt])
+  @@index([userId, countsAsSpending, occurredAt])
+  @@index([userId, categoryId, occurredAt])
+  @@index([userId, merchantKey])
+  @@index([accountId, occurredAt])
+  @@index([transferGroupId])
+  @@map("transactions")
+}
+
+// ---------------------------------------------------------------------
+// SMS ingest
+// ---------------------------------------------------------------------
+
+model RawMessage {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceKeyId String?    @map("device_key_id") @db.Uuid
+  deviceKey   DeviceKey? @relation(fields: [deviceKeyId], references: [id], onDelete: SetNull)
+
+  sender String
+  body   String
+
+  /// SHA-256 of sender + body + timestamp. UNIQUE, so a forwarder retry
+  /// on flaky signal cannot create a duplicate transaction. The
+  /// guarantee lives in the database, not in application code where it
+  /// is subject to races.
+  sha256 String @unique
+
+  receivedAt DateTime         @map("received_at") @db.Timestamptz(3)
+  status     RawMessageStatus @default(pending)
+
+  /// Whatever the parser extracted. Shape varies per bank, so jsonb —
+  /// this is where a document store would have been useful, and
+  /// Postgres provides it without a second database.
+  parsedPayload Json? @map("parsed_payload") @db.JsonB
+
+  parseError String? @map("parse_error")
+
+  transaction Transaction?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId, receivedAt])
+  @@index([status])
+  @@map("raw_messages")
+}
+
+/// Regex templates per SMS sender. Learned templates start unapproved so
+/// an LLM guess cannot silently start parsing real money incorrectly.
+model ParseTemplate {
+  id     String @id @default(uuid()) @db.Uuid
+  sender String
+
+  pattern String
+
+  /// Which regex capture group maps to which field.
+  fieldMap Json @map("field_map") @db.JsonB
+
+  /// Higher wins. Lets a specific template beat a general one.
+  priority   Int     @default(0)
+  isApproved Boolean @default(false) @map("is_approved")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([sender, priority])
+  @@map("parse_templates")
+}
+
+// ---------------------------------------------------------------------
+// Budgets
+// ---------------------------------------------------------------------
+
+model Budget {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  categoryId String   @map("category_id") @db.Uuid
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  /// First day of the budget month, stored as a date.
+  month       DateTime @db.Date
+  limitAmount Decimal  @map("limit_amount") @db.Decimal(18, 2)
+  currency    Currency
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([userId, categoryId, month])
+  @@index([userId, month])
+  @@map("budgets")
+}
+
+// ---------------------------------------------------------------------
+// Investments (schema only — features land in Module 14)
+//
+// Included now because adding tables later is easy, while the shape of
+// `transactions` they depend on is not. EGX has no reliable free price
+// API, so price_snapshots is written primarily by manual entry.
+// ---------------------------------------------------------------------
+
+model Holding {
+  id        String  @id @default(uuid()) @db.Uuid
+  accountId String  @map("account_id") @db.Uuid
+
+  /// e.g. "TMG", "WE" on EGX.
+  symbol   String
+  exchange String @default("EGX")
+
+  /// 18,8 rather than 18,2 — fractional shares exceed 2 decimal places.
+  quantity      Decimal  @db.Decimal(18, 8)
+  avgCostAmount Decimal  @map("avg_cost_amount") @db.Decimal(18, 2)
+  currency      Currency
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  trades Trade[]
+
+  @@unique([accountId, symbol, exchange])
+  @@map("holdings")
+}
+
+model Trade {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// The cash side of the trade lives in `transactions`; this row holds
+  /// the share-specific detail.
+  transactionId String      @unique @map("transaction_id") @db.Uuid
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  holdingId String  @map("holding_id") @db.Uuid
+  holding   Holding @relation(fields: [holdingId], references: [id], onDelete: Restrict)
+
+  side         String
+  quantity     Decimal @db.Decimal(18, 8)
+  pricePerUnit Decimal @map("price_per_unit") @db.Decimal(18, 4)
+  fees         Decimal @default(0) @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([holdingId])
+  @@map("trades")
+}
+
+/// Market prices. Unrealized gains are DERIVED from holdings x the
+/// latest snapshot — never stored as ledger rows, or you would have
+/// "income" you never received.
+model PriceSnapshot {
+  id       String   @id @default(uuid()) @db.Uuid
+  symbol   String
+  exchange String   @default("EGX")
+  asOf     DateTime @map("as_of") @db.Timestamptz(3)
+  price    Decimal  @db.Decimal(18, 4)
+  currency Currency
+
+  /// 'manual' for hand-entered EGX prices, otherwise the feed name.
+  source String @default("manual")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([symbol, exchange, asOf])
+  @@index([symbol, asOf])
+  @@map("price_snapshots")
+}
