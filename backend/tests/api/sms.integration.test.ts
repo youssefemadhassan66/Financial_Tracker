@@ -52,6 +52,7 @@ async function newUser() {
   return {
     get: (path: string) => as(request(app).get(path)),
     post: (path: string, body?: object) => as(request(app).post(path)).send(body ?? {}),
+    patch: (path: string, body: object) => as(request(app).patch(path)).send(body),
     sms: (body: string, minutesAgo = 5, sender = 'TESTBANK') =>
       request(app)
         .post('/api/ingest/sms')
@@ -69,7 +70,7 @@ suite('SMS -> transaction', () => {
   beforeAll(async () => {
     me = await newUser();
     other = await newUser();
-    await me.post('/api/accounts', { name: 'Test Visa', type: 'credit_card', currency: 'EGP', last4: '1234' });
+    await me.post('/api/accounts', { name: 'Test Visa', type: 'credit_card', currency: 'EGP', last4s: ['1234'] });
   });
 
   it('parses a purchase the moment it arrives', async () => {
@@ -111,7 +112,7 @@ suite('SMS -> transaction', () => {
     const unparsed = (await me.get('/api/sms?status=unparsed')).body.messages as { parseError: string }[];
     expect(unparsed[0]?.parseError).toContain('9999');
 
-    await me.post('/api/accounts', { name: 'Debit', type: 'checking', currency: 'EGP', last4: '9999' });
+    await me.post('/api/accounts', { name: 'Debit', type: 'checking', currency: 'EGP', last4s: ['9999'] });
     const summary = (await me.post('/api/sms/reprocess')).body;
     expect(summary).toMatchObject({ parsed: 1, next: null });
     expect((await me.get('/api/sms?status=unparsed')).body.messages).toEqual([]);
@@ -160,5 +161,55 @@ suite('SMS -> transaction', () => {
     expect((await me.get('/api/sms?status=weird')).status).toBe(400);
     expect((await me.post('/api/sms/reprocess', { after: 'not-a-uuid' })).status).toBe(400);
     expect((await me.post('/api/sms/reprocess', { userId: 'x' })).status).toBe(400);
+  });
+});
+
+suite('one account, several card/account numbers', () => {
+  let me: Awaited<ReturnType<typeof newUser>>;
+  let other: Awaited<ReturnType<typeof newUser>>;
+  let accountId: string;
+
+  beforeAll(async () => {
+    me = await newUser();
+    other = await newUser();
+    // Like a real CIB account: created knowing only the debit card digits.
+    const res = await me.post('/api/accounts', { name: 'CIB Current', type: 'checking', currency: 'EGP', last4s: ['1111'] });
+    accountId = res.body.account.id as string;
+  });
+
+  it('routes an SMS quoting the second number to the same account once it is added', async () => {
+    // e.g. an InstaPay transfer, which quotes the ACCOUNT digits, not the card.
+    expect((await me.sms('card 2222 charged EGP 800.00 at TEST FRIEND NAME', 10)).body.processing).toBe('unparsed');
+
+    const patched = await me.patch(`/api/accounts/${accountId}`, { last4s: ['1111', '2222'] });
+    expect(patched.status).toBe(200);
+    expect(patched.body.account.last4s).toEqual(['1111', '2222']);
+
+    expect((await me.post('/api/sms/reprocess')).body).toMatchObject({ parsed: 1 });
+    expect((await me.sms('card 1111 charged EGP 5.00 at Uber', 5)).body.processing).toBe('parsed');
+
+    const txs = (await me.get('/api/transactions')).body.transactions as { accountId: string }[];
+    expect(txs).toHaveLength(2);
+    expect(txs.every((t) => t.accountId === accountId)).toBe(true);
+  });
+
+  it('refuses digits another active account already uses', async () => {
+    const res = await me.post('/api/accounts', { name: 'Second', type: 'checking', currency: 'EGP', last4s: ['2222'] });
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toContain('CIB Current');
+  });
+
+  it("treats another user's account as not found, and leaves it untouched", async () => {
+    expect((await other.patch(`/api/accounts/${accountId}`, { last4s: ['9999'] })).status).toBe(404);
+    const mine = (await me.get('/api/accounts')).body.accounts as { id: string; last4s: string[] }[];
+    expect(mine.find((a) => a.id === accountId)?.last4s).toEqual(['1111', '2222']);
+  });
+
+  it('rejects bad input', async () => {
+    const path = `/api/accounts/${accountId}`;
+    expect((await me.patch(path, { last4s: ['12'] })).status).toBe(400);
+    expect((await me.patch(path, {})).status).toBe(400);
+    expect((await me.patch(path, { last4s: ['1111'], userId: 'x' })).status).toBe(400);
+    expect((await me.patch('/api/accounts/not-a-uuid', { last4s: ['1111'] })).status).toBe(400);
   });
 });

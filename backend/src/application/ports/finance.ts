@@ -37,6 +37,8 @@ export interface AccountRepository {
   create(account: Account): Promise<void>;
   findForUser(id: string, userId: UserId): Promise<Account | null>;
   listForUser(userId: UserId): Promise<Account[]>;
+  /** Saves name, card/account digits and archive state. */
+  update(account: Account): Promise<void>;
 }
 
 export interface TransactionFilter {

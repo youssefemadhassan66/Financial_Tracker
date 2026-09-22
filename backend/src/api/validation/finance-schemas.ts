@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { isCalendarDate, type CalendarDate } from '../../domain/calendar-date.js';
 import { TRANSACTION_KINDS } from '../../domain/transaction-kind.js';
 import { ACCOUNT_TYPES } from '../../domain/account-type.js';
+import { MAX_LAST4S } from '../../domain/account.js';
 import {
   currencyField,
   instantField,
@@ -27,12 +28,26 @@ export const createCategoryBody = z.strictObject({
     .default(null),
 });
 
+/** Last 4 digits of each card/account number; the domain de-duplicates. */
+const last4sField = z
+  .array(z.string().regex(/^\d{4}$/, 'Must be exactly 4 digits'))
+  .max(MAX_LAST4S, `At most ${MAX_LAST4S} card or account numbers`);
+
 export const createAccountBody = z.strictObject({
   name: safeText({ max: 60 }),
   type: z.enum(ACCOUNT_TYPES as unknown as [string, ...string[]]).transform((v) => v as (typeof ACCOUNT_TYPES)[number]),
   currency: currencyField,
-  last4: z.string().regex(/^\d{4}$/, 'Must be exactly 4 digits').optional(),
+  last4s: last4sField.optional(),
 });
+
+export const accountIdParams = z.object({ id: uuidParam });
+
+export const updateAccountBody = z
+  .strictObject({
+    name: safeText({ max: 60 }).optional(),
+    last4s: last4sField.optional(),
+  })
+  .refine((body) => body.name !== undefined || body.last4s !== undefined, 'Nothing to update');
 
 export const recordTransactionBody = z.strictObject({
   accountId: uuidParam,

@@ -197,8 +197,10 @@ model Account {
   type     AccountType
   currency Currency
 
-  /// Last 4 digits, used to route an incoming SMS to the right account.
-  last4 String? @db.VarChar(4)
+  /// Last 4 digits of every card and account number of this account
+  /// (debit card AND account number, reissued cards), used to route an
+  /// incoming SMS. A CHECK constraint in the migration keeps each one 4 digits.
+  last4s String[] @default([]) @db.VarChar(4)
 
   /// Accounts are archived, never deleted — deleting one would orphan
   /// the transaction history that still has to appear in past reports.
@@ -211,7 +213,6 @@ model Account {
   subscriptions Subscription[]
 
   @@index([userId])
-  @@index([userId, last4])
   @@map("accounts")
 }
 

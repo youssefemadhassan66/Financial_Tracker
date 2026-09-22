@@ -51,7 +51,7 @@ withDb('Prisma client (integration)', () => {
         name: 'CIB Card',
         type: 'credit_card',
         currency: 'EGP',
-        last4: '1234',
+        last4s: ['1234'],
       },
     });
 

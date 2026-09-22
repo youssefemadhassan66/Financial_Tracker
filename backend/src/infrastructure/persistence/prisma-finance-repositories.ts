@@ -95,7 +95,7 @@ export class PrismaAccountRepository implements AccountRepository {
         name: account.getName(),
         type: account.type,
         currency: account.currency,
-        last4: account.last4,
+        last4s: [...account.getLast4s()],
       },
     });
   }
@@ -103,6 +103,15 @@ export class PrismaAccountRepository implements AccountRepository {
   async findForUser(id: string, userId: UserId): Promise<Account | null> {
     const row = await this.prisma.account.findFirst({ where: { id, userId } });
     return row === null ? null : toAccount(row);
+  }
+
+  async update(account: Account): Promise<void> {
+    // updateMany with userId, not update by id: the WHERE itself proves
+    // ownership, so this can never write another user's account.
+    await this.prisma.account.updateMany({
+      where: { id: account.id, userId: account.userId },
+      data: { name: account.getName(), last4s: [...account.getLast4s()], archivedAt: account.getArchivedAt() },
+    });
   }
 
   async listForUser(userId: UserId): Promise<Account[]> {
@@ -113,7 +122,7 @@ export class PrismaAccountRepository implements AccountRepository {
 
 function toAccount(row: {
   id: string; userId: string; name: string; type: Account['type']; currency: Account['currency'];
-  last4: string | null; archivedAt: Date | null;
+  last4s: string[]; archivedAt: Date | null;
 }): Account {
   return Account.restore(
     {
@@ -122,7 +131,7 @@ function toAccount(row: {
       name: row.name,
       type: row.type,
       currency: row.currency,
-      ...(row.last4 === null ? {} : { last4: row.last4 }),
+      last4s: row.last4s,
     },
     row.archivedAt,
   );
