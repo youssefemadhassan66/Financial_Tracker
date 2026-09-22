@@ -13,6 +13,10 @@ import {
   RevokeDeviceKey,
 } from '../application/devices/device-keys.js';
 import { StoreRawSms } from '../application/ingest/store-raw-sms.js';
+import { ListSmsMessages, ProcessRawSms, ReprocessSms } from '../application/sms/process-sms.js';
+import { TemplateSmsParser } from '../application/sms/template-sms-parser.js';
+import { BANK_CATALOG } from '../domain/sms/banks/index.js';
+import type { SmsCatalog } from '../domain/sms/sms-template.js';
 import {
   CreateAccount,
   CreateCategory,
@@ -32,7 +36,10 @@ import { getPrismaClient } from '../infrastructure/persistence/prisma-client.js'
 import { PrismaUserRepository } from '../infrastructure/persistence/prisma-user-repository.js';
 import { PrismaRefreshTokenRepository } from '../infrastructure/persistence/prisma-refresh-token-repository.js';
 import { PrismaDeviceKeyRepository } from '../infrastructure/persistence/prisma-device-key-repository.js';
-import { PrismaRawMessageRepository } from '../infrastructure/persistence/prisma-raw-message-repository.js';
+import {
+  PrismaMerchantCategoryRepository,
+  PrismaRawMessageRepository,
+} from '../infrastructure/persistence/prisma-raw-message-repository.js';
 import {
   PrismaAccountRepository,
   PrismaAnalyticsQueries,
@@ -71,6 +78,9 @@ export interface Container {
   revokeDeviceKey: RevokeDeviceKey;
   authenticateDevice: AuthenticateDevice;
   storeRawSms: StoreRawSms;
+  processRawSms: ProcessRawSms;
+  reprocessSms: ReprocessSms;
+  listSmsMessages: ListSmsMessages;
   listCategories: ListCategories;
   createCategory: CreateCategory;
   listAccounts: ListAccounts;
@@ -91,6 +101,8 @@ export function buildContainer(
   // @prisma/client itself — it only knows the infrastructure function.
   prisma: ReturnType<typeof getPrismaClient> = getPrismaClient(),
   clock: Clock = systemClock,
+  // Injectable so tests can run the whole pipeline with a known catalog.
+  smsCatalog: SmsCatalog = BANK_CATALOG,
 ): Container {
   const users = new PrismaUserRepository(prisma);
   const refreshTokens = new PrismaRefreshTokenRepository(prisma);
@@ -102,6 +114,17 @@ export function buildContainer(
   const settings = new PrismaUserSettingsRepository(prisma);
   const subscriptions = new PrismaSubscriptionRepository(prisma);
   const analytics = new PrismaAnalyticsQueries(prisma);
+  const merchantCategories = new PrismaMerchantCategoryRepository(prisma);
+
+  const processRawSms = new ProcessRawSms(
+    rawMessages,
+    new TemplateSmsParser(smsCatalog),
+    accounts,
+    categories,
+    merchantCategories,
+    settings,
+    clock,
+  );
 
   const passwords = new Argon2PasswordHasher();
   const accessTokens = new JoseAccessTokenService(config.jwtAccessSecret, config.accessTokenTtlSeconds, clock);
@@ -122,6 +145,9 @@ export function buildContainer(
     revokeDeviceKey: new RevokeDeviceKey(deviceKeys, clock),
     authenticateDevice: new AuthenticateDevice(deviceKeys, opaqueTokens, clock),
     storeRawSms: new StoreRawSms(rawMessages, clock),
+    processRawSms,
+    reprocessSms: new ReprocessSms(rawMessages, processRawSms),
+    listSmsMessages: new ListSmsMessages(rawMessages),
     listCategories: new ListCategories(categories),
     createCategory: new CreateCategory(categories),
     listAccounts: new ListAccounts(accounts),

@@ -40,9 +40,24 @@ export function ingestRouter(container: Container, limits: RateLimiters): Router
     const sms = ingestSmsBody.parse(req.body);
     const device = req.device!;
     const result = await container.storeRawSms.execute(device.userId, device.deviceKeyId, sms);
+
+    // Parse right away so the transaction appears within a second. A
+    // parse failure must NOT fail the request: the message is already
+    // safely stored, and a 5xx would make the phone retry forever.
+    // Anything that goes wrong here is fixed by a later reprocess.
+    let processing: string = 'duplicate';
+    if (!result.duplicate) {
+      try {
+        processing = (await container.processRawSms.execute(device.userId, result.id)).status;
+      } catch (error) {
+        console.error('[sms] processing failed; message kept for reprocess', error);
+        processing = 'pending';
+      }
+    }
+
     // 201 for new, 200 for a duplicate. Both are success: the forwarder
     // must stop retrying either way.
-    res.status(result.duplicate ? 200 : 201).json(result);
+    res.status(result.duplicate ? 200 : 201).json({ ...result, processing });
   });
 
   return router;
