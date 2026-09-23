@@ -14,8 +14,11 @@ import type {
   RawMessageStatus,
   RawMessageView,
   SmsInbox,
+  TransferPairLeg,
 } from '../../src/application/ports/sms.js';
 import { NotFoundError } from '../../src/application/errors.js';
+import { PAIR_WINDOW_MS, TransferPairing } from '../../src/application/sms/transfer-pairing.js';
+import { DomainError } from '../../src/domain/errors.js';
 import { Account } from '../../src/domain/account.js';
 import type { Transaction } from '../../src/domain/transaction.js';
 import { DEFAULT_SPENDING_POLICY } from '../../src/domain/spending-policy.js';
@@ -69,6 +72,8 @@ class FakeInbox implements SmsInbox {
   readonly saved: Transaction[] = [];
   /** Simulates another run winning the race between our read and write. */
   loseNextRace = false;
+  /** Ids another run turns into a transaction just before this run parks them. */
+  readonly parkedElsewhere = new Set<string>();
 
   add(id: string, body: string, options: { userId?: UserId; sender?: string; receivedAt?: Date } = {}): void {
     this.rows.set(id, {
@@ -80,6 +85,7 @@ class FakeInbox implements SmsInbox {
       status: 'pending',
       reason: null,
       payload: null,
+      parsedPayload: null,
     });
   }
 
@@ -103,11 +109,38 @@ class FakeInbox implements SmsInbox {
     return [];
   }
 
-  async markNotTransaction(id: string, userId: UserId, status: 'ignored' | 'unparsed', reason: string, payload: ParsePayload | null) {
+  async markNotTransaction(
+    id: string,
+    userId: UserId,
+    status: 'ignored' | 'unparsed' | 'awaiting_pair',
+    reason: string,
+    payload: ParsePayload | null,
+  ) {
     const row = this.rows.get(id);
-    if (row !== undefined && row.userId === userId && row.status !== 'parsed') {
-      Object.assign(row, { status, reason, payload });
+    if (this.parkedElsewhere.delete(id) || row === undefined || row.userId !== userId || row.status === 'parsed') {
+      return false;
     }
+    Object.assign(row, { status, reason, payload, parsedPayload: payload });
+    return true;
+  }
+
+  async listAwaitingPair(userId: UserId, from: Date, to: Date): Promise<RawMessageRecord[]> {
+    return [...this.rows.values()].filter(
+      (r) => r.userId === userId && r.status === 'awaiting_pair' && r.receivedAt >= from && r.receivedAt <= to,
+    );
+  }
+
+  async completeTransferPair(userId: UserId, legs: readonly [TransferPairLeg, TransferPairLeg]) {
+    const rows = legs.map((leg) => this.rows.get(leg.messageId));
+    if (this.loseNextRace || rows.some((r) => r === undefined || r.userId !== userId || r.status !== 'awaiting_pair')) {
+      this.loseNextRace = false;
+      return 'already-processed' as const;
+    }
+    legs.forEach((leg, i) => {
+      Object.assign(rows[i]!, { status: 'parsed' as RawMessageStatus, reason: null, payload: leg.payload, parsedPayload: leg.payload });
+      this.saved.push(leg.transaction);
+    });
+    return 'saved' as const;
   }
 
   async completeWithTransaction(id: string, userId: UserId, transaction: Transaction, payload: ParsePayload) {
@@ -116,7 +149,7 @@ class FakeInbox implements SmsInbox {
       this.loseNextRace = false;
       return 'already-processed' as const;
     }
-    Object.assign(row, { status: 'parsed' as RawMessageStatus, reason: null, payload });
+    Object.assign(row, { status: 'parsed' as RawMessageStatus, reason: null, payload, parsedPayload: payload });
     this.saved.push(transaction);
     return 'saved' as const;
   }
@@ -308,7 +341,7 @@ describe('ProcessRawSms', () => {
       inbox.add('m3', 'Your OTP is 1234', { receivedAt: new Date('2026-09-03T10:00:00Z') });
 
       const summary = await new ReprocessSms(inbox, processOne).execute(USER);
-      expect(summary).toEqual({ processed: 3, parsed: 1, unparsed: 1, ignored: 1, next: null });
+      expect(summary).toEqual({ processed: 3, parsed: 1, unparsed: 1, ignored: 1, awaitingPair: 0, next: null });
     });
 
     it('pages with a cursor, so ignored messages cannot block newer ones forever', async () => {
@@ -326,6 +359,220 @@ describe('ProcessRawSms', () => {
 
       const third = await reprocess.execute(USER, { limit: 3, after: second.next! });
       expect(third).toMatchObject({ processed: 0, next: null });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------
+// Internal transfers: account -> credit card arrives as TWO CIB SMS.
+// Digits are fake: 2222 = checking account, 1111 = credit card.
+// ---------------------------------------------------------------------
+
+const debitSms = (amount = '1,200.00') =>
+  `Your account ending with ********2222 is debited with amount EGP ${amount}DR On 07 SEP 2026 with transfer to another account. For more information, please contact 19666.`;
+const paymentSms = (amount = '1200.00', last4 = '1111') =>
+  `تم سداد مبلغ ${amount} جم فى بطاقتكم الائتمانية المنتهية بـ ${last4} بتاريخ 26-09-07`;
+
+describe('transfer pairing', () => {
+  let inbox: FakeInbox;
+  let processOne: ProcessRawSms;
+  let pairing: TransferPairing;
+  const checking = Account.create({
+    id: newAccountId('a0000000-0000-0000-0000-000000002222'),
+    userId: USER,
+    name: 'CIB Current',
+    type: 'checking',
+    currency: 'EGP',
+    last4s: ['2222', '3333'],
+  });
+  const card = Account.create({
+    id: newAccountId('a0000000-0000-0000-0000-000000001111'),
+    userId: USER,
+    name: 'CIB Visa',
+    type: 'credit_card',
+    currency: 'EGP',
+    last4s: ['1111'],
+  });
+
+  beforeEach(() => {
+    inbox = new FakeInbox();
+    const all = [checking, card];
+    const accountRepo: AccountRepository = {
+      create: async () => undefined,
+      findForUser: async (id, userId) => all.find((a) => a.id === id && a.userId === userId) ?? null,
+      listForUser: async (userId) => all.filter((a) => a.userId === userId),
+      update: async () => undefined,
+    };
+    const categoryRepo: CategoryRepository = {
+      listForUser: async () => [],
+      findForUser: async () => null,
+      findByNameForUser: async () => null,
+      create: async () => {
+        throw new Error('unused');
+      },
+    };
+    const clock = new FakeClock(NOW);
+    processOne = new ProcessRawSms(
+      inbox,
+      new TemplateSmsParser(BANK_CATALOG),
+      accountRepo,
+      categoryRepo,
+      { findCategoryId: async () => null },
+      { getSpendingPolicy: async () => DEFAULT_SPENDING_POLICY },
+      clock,
+    );
+    pairing = new TransferPairing(inbox, accountRepo, clock);
+  });
+
+  const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000);
+
+  function expectOnePair(): void {
+    expect(inbox.saved).toHaveLength(2);
+    const [a, b] = inbox.saved;
+    expect(a!.transferGroupId).not.toBeNull();
+    expect(a!.transferGroupId).toBe(b!.transferGroupId);
+    for (const tx of inbox.saved) {
+      expect(tx.kind).toBe('transfer');
+      expect(tx.getCountsAsSpending()).toBe(false);
+      expect(tx.amount.toDecimalString()).toBe('1200.00');
+    }
+    expect(inbox.saved.find((t) => t.direction === 'debit')?.accountId).toBe(checking.id);
+    expect(inbox.saved.find((t) => t.direction === 'credit')?.accountId).toBe(card.id);
+  }
+
+  it('waits when only the account debit has arrived, and records nothing', async () => {
+    inbox.add('a', debitSms(), { sender: 'CIB' });
+    expect(await processOne.execute(USER, 'a')).toMatchObject({ status: 'awaiting_pair' });
+    expect(inbox.saved).toEqual([]);
+    expect(inbox.rows.get('a')?.status).toBe('awaiting_pair');
+    expect(inbox.rows.get('a')?.parsedPayload).toMatchObject({ accountId: checking.id, event: 'transfer-out' });
+  });
+
+  it('pairs the debit and the card payment into one transfer (debit first)', async () => {
+    inbox.add('a', debitSms(), { sender: 'CIB', receivedAt: minutesAgo(10) });
+    inbox.add('b', paymentSms(), { sender: 'CIB', receivedAt: minutesAgo(6) });
+    await processOne.execute(USER, 'a');
+    expect(await processOne.execute(USER, 'b')).toMatchObject({ status: 'parsed' });
+    expectOnePair();
+    expect(inbox.rows.get('a')?.status).toBe('parsed');
+    expect(inbox.rows.get('b')?.status).toBe('parsed');
+    // Dated when the money left: the earlier of the two SMS.
+    expect(inbox.saved[0]!.occurredAt).toEqual(minutesAgo(10));
+  });
+
+  it('pairs them when the card payment arrives first', async () => {
+    inbox.add('b', paymentSms(), { sender: 'CIB', receivedAt: minutesAgo(10) });
+    inbox.add('a', debitSms(), { sender: 'CIB', receivedAt: minutesAgo(6) });
+    expect(await processOne.execute(USER, 'b')).toMatchObject({ status: 'awaiting_pair' });
+    expect(await processOne.execute(USER, 'a')).toMatchObject({ status: 'parsed' });
+    expectOnePair();
+  });
+
+  it('does not pair different amounts', async () => {
+    inbox.add('a', debitSms('1,200.00'), { sender: 'CIB' });
+    inbox.add('b', paymentSms('1100.00'), { sender: 'CIB' });
+    await processOne.execute(USER, 'a');
+    expect(await processOne.execute(USER, 'b')).toMatchObject({ status: 'awaiting_pair' });
+    expect(inbox.saved).toEqual([]);
+  });
+
+  it('does not pair halves more than 48 hours apart', async () => {
+    inbox.add('a', debitSms(), { sender: 'CIB', receivedAt: new Date(NOW.getTime() - PAIR_WINDOW_MS - 120_000) });
+    inbox.add('b', paymentSms(), { sender: 'CIB', receivedAt: minutesAgo(1) });
+    await processOne.execute(USER, 'a');
+    expect(await processOne.execute(USER, 'b')).toMatchObject({ status: 'awaiting_pair' });
+    expect(inbox.saved).toEqual([]);
+  });
+
+  it('refuses to guess between two possible debits and asks for a manual pair', async () => {
+    inbox.add('a1', debitSms(), { sender: 'CIB', receivedAt: minutesAgo(30) });
+    inbox.add('a2', debitSms().replace('07 SEP', '08 SEP'), { sender: 'CIB', receivedAt: minutesAgo(20) });
+    inbox.add('b', paymentSms(), { sender: 'CIB', receivedAt: minutesAgo(10) });
+    await processOne.execute(USER, 'a1');
+    await processOne.execute(USER, 'a2');
+    expect(await processOne.execute(USER, 'b')).toEqual({
+      status: 'awaiting_pair',
+      reason: 'Several possible matches; pair this transfer manually',
+    });
+    expect(inbox.saved).toEqual([]);
+
+    const done = await pairing.pairManually(USER, 'a2', 'b');
+    expect(done.transactionIds).toHaveLength(2);
+    expectOnePair();
+    expect(inbox.rows.get('a1')?.status).toBe('awaiting_pair');
+  });
+
+  it('does not let one debit claim a payment that has two possible debits', async () => {
+    // Order matters here: the payment is waiting with ONE debit, then a
+    // second identical debit arrives. The second debit sees one payment,
+    // but that payment now sees two debits, so nothing is paired.
+    inbox.add('a1', debitSms(), { sender: 'CIB', receivedAt: minutesAgo(30) });
+    inbox.add('b', paymentSms(), { sender: 'CIB', receivedAt: minutesAgo(20) });
+    inbox.add('a2', debitSms().replace('07 SEP', '08 SEP'), { sender: 'CIB', receivedAt: minutesAgo(10) });
+    // Park a1 and b without letting them see each other yet.
+    await processOne.execute(USER, 'b');
+    inbox.loseNextRace = true;
+    await processOne.execute(USER, 'a1');
+    expect(inbox.rows.get('a1')?.status).toBe('awaiting_pair');
+    expect(await processOne.execute(USER, 'a2')).toMatchObject({ status: 'awaiting_pair' });
+    expect(inbox.saved).toEqual([]);
+  });
+
+  it('keeps a card payment that points at a bank account as unparsed', async () => {
+    inbox.add('b', paymentSms('1200.00', '3333'), { sender: 'CIB' });
+    expect(await processOne.execute(USER, 'b')).toMatchObject({ status: 'unparsed' });
+    expect(inbox.saved).toEqual([]);
+  });
+
+  it('backs off when another run paired the halves first', async () => {
+    inbox.add('a', debitSms(), { sender: 'CIB' });
+    inbox.add('b', paymentSms(), { sender: 'CIB' });
+    await processOne.execute(USER, 'a');
+    inbox.loseNextRace = true;
+    expect(await processOne.execute(USER, 'b')).toEqual({ status: 'already-processed' });
+    expect(inbox.saved).toEqual([]);
+  });
+
+  it('pairs waiting halves during a reprocess', async () => {
+    inbox.add('a', debitSms(), { sender: 'CIB', receivedAt: minutesAgo(10) });
+    inbox.add('b', paymentSms(), { sender: 'CIB', receivedAt: minutesAgo(5) });
+    const summary = await new ReprocessSms(inbox, processOne).execute(USER);
+    // Reports where each half ENDED UP: both parsed, none still waiting.
+    expect(summary).toMatchObject({ processed: 2, parsed: 2, awaitingPair: 0 });
+    expectOnePair();
+  });
+
+  it('backs off when another run turned the half into a transaction before it could park', async () => {
+    inbox.add('a', debitSms(), { sender: 'CIB' });
+    inbox.parkedElsewhere.add('a');
+    expect(await processOne.execute(USER, 'a')).toEqual({ status: 'already-processed' });
+    expect(inbox.saved).toEqual([]);
+  });
+
+  describe('manual pairing', () => {
+    beforeEach(async () => {
+      inbox.add('a', debitSms(), { sender: 'CIB' });
+      inbox.add('b', paymentSms('1100.00'), { sender: 'CIB' });
+      inbox.add('other', 'not a bank sms', { sender: 'CIB' });
+      await processOne.execute(USER, 'a');
+      await processOne.execute(USER, 'b');
+      await processOne.execute(USER, 'other');
+    });
+
+    it('refuses halves with different amounts', async () => {
+      await expect(pairing.pairManually(USER, 'a', 'b')).rejects.toThrow(DomainError);
+    });
+
+    it('refuses the halves swapped', async () => {
+      await expect(pairing.pairManually(USER, 'b', 'a')).rejects.toThrow(DomainError);
+    });
+
+    it("treats another user's message as not found", async () => {
+      await expect(pairing.pairManually(STRANGER, 'a', 'b')).rejects.toThrow(NotFoundError);
+    });
+
+    it('refuses a message that is not a waiting transfer half', async () => {
+      await expect(pairing.pairManually(USER, 'a', 'other')).rejects.toThrow(/not waiting/);
     });
   });
 });

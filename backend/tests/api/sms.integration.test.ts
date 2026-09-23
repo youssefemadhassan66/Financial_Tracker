@@ -4,9 +4,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildContainer } from '../../src/api/container.js';
 import { createServer } from '../../src/api/server.js';
 import { getPrismaClient } from '../../src/infrastructure/persistence/prisma-client.js';
+import { PrismaRawMessageRepository } from '../../src/infrastructure/persistence/prisma-raw-message-repository.js';
 import { systemClock } from '../../src/infrastructure/system-clock.js';
 import { BANK_CATALOG } from '../../src/domain/sms/banks/index.js';
 import type { SmsCatalog } from '../../src/domain/sms/sms-template.js';
+import type { ParsePayload } from '../../src/application/ports/sms.js';
 import { databaseAvailable, PASSWORD, testConfig } from './helpers.js';
 
 /**
@@ -28,6 +30,8 @@ const CATALOG: SmsCatalog = {
       event: 'purchase',
       pattern: /card (?<last4>\d{4}) charged (?<currency>[A-Z]{3}) (?<amount>[\d,.]+) at (?<merchant>.+)$/,
     },
+    // The real CIB formats too (sender CIB), for the transfer pairing suite.
+    ...BANK_CATALOG.templates,
   ],
   ignoreRules: BANK_CATALOG.ignoreRules,
 };
@@ -211,5 +215,117 @@ suite('one account, several card/account numbers', () => {
     expect((await me.patch(path, {})).status).toBe(400);
     expect((await me.patch(path, { last4s: ['1111'], userId: 'x' })).status).toBe(400);
     expect((await me.patch('/api/accounts/not-a-uuid', { last4s: ['1111'] })).status).toBe(400);
+  });
+});
+
+// Fake digits: 2222 = checking account, 1111 = credit card.
+const debitSms = (amount: string) =>
+  `Your account ending with ********2222 is debited with amount EGP ${amount}DR On 07 SEP 2026 with transfer to another account. For more information, please contact 19666.`;
+const paymentSms = (amount: string) => `تم سداد مبلغ ${amount} جم فى بطاقتكم الائتمانية المنتهية بـ 1111 بتاريخ 26-09-07`;
+
+suite('credit card payment = one internal transfer', () => {
+  let me: Awaited<ReturnType<typeof newUser>>;
+  let other: Awaited<ReturnType<typeof newUser>>;
+  let userId: string;
+  let deviceId: string;
+
+  beforeAll(async () => {
+    me = await newUser();
+    other = await newUser();
+    await me.post('/api/accounts', { name: 'CIB Current', type: 'checking', currency: 'EGP', last4s: ['2222'] });
+    await me.post('/api/accounts', { name: 'CIB Visa', type: 'credit_card', currency: 'EGP', last4s: ['1111'] });
+    ({ id: userId } = await prisma.user.findUniqueOrThrow({ where: { email: emails.at(-2)! }, select: { id: true } }));
+    ({ id: deviceId } = await prisma.deviceKey.findFirstOrThrow({ where: { userId }, select: { id: true } }));
+  });
+
+  const txFor = (messageIds: string[]) =>
+    prisma.transaction.findMany({
+      where: { rawMessageId: { in: messageIds } },
+      select: { kind: true, direction: true, countsAsSpending: true, transferGroupId: true, amount: true },
+    });
+
+  it('pairs the account debit and the card payment into one transfer, never spending', async () => {
+    const a = await me.sms(debitSms('1,200.00'), 10, 'CIB');
+    expect(a.body.processing).toBe('awaiting_pair');
+    const b = await me.sms(paymentSms('1200.00'), 6, 'CIB');
+    expect(b.body.processing).toBe('parsed');
+
+    const txs = await txFor([a.body.id, b.body.id]);
+    expect(txs).toHaveLength(2);
+    expect(new Set(txs.map((t) => t.transferGroupId)).size).toBe(1);
+    expect(txs.every((t) => t.kind === 'transfer' && !t.countsAsSpending && t.amount.toFixed(2) === '1200.00')).toBe(true);
+    expect(txs.map((t) => t.direction).sort()).toEqual(['credit', 'debit']);
+    expect((await me.get('/api/sms?status=awaiting_pair')).body.messages).toEqual([]);
+
+    const egp = ((await me.get('/api/analytics/categories')).body.currencies as { currency: string; spending: { total: string } }[])
+      .find((c) => c.currency === 'EGP');
+    expect(egp?.spending.total ?? '0.00').toBe('0.00');
+  });
+
+  it('creates exactly one pair when both halves are processed at the same moment', async () => {
+    for (let round = 0; round < 5; round++) {
+      const amount = `${300 + round}.00`;
+      const store = (body: string) =>
+        container.storeRawSms.execute(userId as never, deviceId, { sender: 'CIB', body, receivedAt: new Date(Date.now() - 60_000) });
+      const a = await store(debitSms(amount));
+      const b = await store(paymentSms(amount));
+
+      await Promise.all([
+        container.processRawSms.execute(userId as never, a.id),
+        container.processRawSms.execute(userId as never, b.id),
+      ]);
+
+      const txs = await txFor([a.id, b.id]);
+      expect(txs, `round ${round}`).toHaveLength(2);
+      const statuses = await prisma.rawMessage.findMany({ where: { id: { in: [a.id, b.id] } }, select: { status: true } });
+      expect(statuses.map((s) => s.status), `round ${round}`).toEqual(['parsed', 'parsed']);
+    }
+  });
+
+  it('lets the user pair manually when two debits could match', async () => {
+    const a1 = await me.sms(debitSms('777.00'), 30, 'CIB');
+    const a2 = await me.sms(debitSms('777.00').replace('07 SEP', '08 SEP'), 20, 'CIB');
+    const b = await me.sms(paymentSms('777.00'), 10, 'CIB');
+    expect(b.body.processing).toBe('awaiting_pair');
+
+    const body = { debitMessageId: a2.body.id, paymentMessageId: b.body.id };
+    expect((await other.post('/api/sms/pair', body)).status).toBe(404);
+    expect((await me.post('/api/sms/pair', { ...body, extra: 1 })).status).toBe(400);
+    expect((await me.post('/api/sms/pair', { debitMessageId: 'x', paymentMessageId: b.body.id })).status).toBe(400);
+
+    const res = await me.post('/api/sms/pair', body);
+    expect(res.status).toBe(201);
+    expect(res.body.transactionIds).toHaveLength(2);
+    expect(await txFor([a2.body.id, b.body.id])).toHaveLength(2);
+
+    // Already paired: a second attempt is a conflict, not a second transfer.
+    expect((await me.post('/api/sms/pair', body)).status).toBe(409);
+    const waiting = (await me.get('/api/sms?status=awaiting_pair')).body.messages as { id: string }[];
+    expect(waiting.map((m) => m.id)).toEqual([a1.body.id]);
+  });
+
+  it('refuses a stale pairing when a half changed after it was read', async () => {
+    // Different amounts, so both stay waiting.
+    const a = await me.sms(debitSms('905.00'), 5, 'CIB');
+    const b = await me.sms(paymentSms('906.00'), 4, 'CIB');
+    const rows = await prisma.rawMessage.findMany({
+      where: { id: { in: [a.body.id, b.body.id] } },
+      select: { id: true, parsedPayload: true },
+    });
+    // As if a reprocess re-routed the debit to another account after the
+    // pairing read it: the payload the pairing holds no longer matches.
+    const legs = rows.map((r) => {
+      const payload = r.parsedPayload as ParsePayload;
+      return {
+        messageId: r.id,
+        transaction: null as never, // never reached: the claim fails first
+        payload: r.id === a.body.id ? { ...payload, accountId: randomUUID() } : payload,
+      };
+    });
+
+    const result = await new PrismaRawMessageRepository(prisma).completeTransferPair(userId as never, [legs[0]!, legs[1]!]);
+    expect(result).toBe('already-processed');
+    const statuses = await prisma.rawMessage.findMany({ where: { id: { in: [a.body.id, b.body.id] } }, select: { status: true } });
+    expect(statuses.map((r) => r.status)).toEqual(['awaiting_pair', 'awaiting_pair']);
   });
 });

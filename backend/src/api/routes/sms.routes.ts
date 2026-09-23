@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Container } from '../container.js';
 import { requireUser } from '../middleware/authenticate.js';
-import { smsListQuery, smsReprocessBody } from '../validation/finance-schemas.js';
+import { smsListQuery, smsPairBody, smsReprocessBody } from '../validation/finance-schemas.js';
 
 /**
  * Your stored SMS and their parse results. USER token only: the phone's
@@ -29,6 +29,13 @@ export function smsRouter(container: Container): Router {
       body.after === undefined ? {} : { after: body.after },
     );
     res.json(summary);
+  });
+
+  router.post('/pair', async (req, res) => {
+    const body = smsPairBody.parse(req.body);
+    res
+      .status(201)
+      .json(await container.transferPairing.pairManually(req.auth!.userId, body.debitMessageId, body.paymentMessageId));
   });
 
   return router;
