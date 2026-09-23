@@ -5,6 +5,7 @@ import {
   parseSmsAmount,
 } from '../../src/domain/sms/sms-text.js';
 import {
+  isTransferLeg,
   parseWithTemplates,
   transactionShapeOf,
   validateCatalog,
@@ -252,5 +253,15 @@ describe('transactionShapeOf', () => {
 
   it('records a bank charge as a fee', () => {
     expect(transactionShapeOf('fee')).toEqual({ kind: 'fee', direction: 'debit' });
+  });
+});
+
+describe('isTransferLeg', () => {
+  it('marks the two halves of an internal transfer, and nothing else', () => {
+    expect(isTransferLeg('transfer-out')).toBe(true);
+    expect(isTransferLeg('card-payment')).toBe(true);
+    for (const event of ['purchase', 'refund', 'withdrawal', 'deposit', 'fee'] as const) {
+      expect(isTransferLeg(event)).toBe(false);
+    }
   });
 });

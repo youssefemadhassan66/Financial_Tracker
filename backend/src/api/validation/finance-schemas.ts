@@ -108,8 +108,14 @@ export const subscriptionActionParams = z.strictObject({
 
 // --- stored SMS ----------------------------------------------------------
 
+/** Two waiting halves of one transfer, chosen by the user. */
+export const smsPairBody = z.strictObject({
+  debitMessageId: uuidParam,
+  paymentMessageId: uuidParam,
+});
+
 export const smsListQuery = z.strictObject({
-  status: z.enum(['pending', 'parsed', 'unparsed', 'ignored']).optional(),
+  status: z.enum(['pending', 'parsed', 'unparsed', 'ignored', 'awaiting_pair']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 

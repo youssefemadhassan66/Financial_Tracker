@@ -15,7 +15,24 @@ export type SmsEvent =
   | 'refund' // a merchant gave money back
   | 'withdrawal' // cash out of an ATM
   | 'deposit' // money arrived: salary, incoming transfer
-  | 'fee'; // a bank charge
+  | 'fee' // a bank charge
+  | 'transfer-out' // money left an account toward another of YOUR accounts
+  | 'card-payment'; // a credit card bill payment arrived on the card
+
+/**
+ * The two halves of one internal transfer. Each arrives as its own SMS,
+ * and neither may ever be recorded alone: the debit alone would look
+ * like spending, the payment alone like income. They wait for each other
+ * and become ONE transfer pair (see TransferPairing).
+ */
+export type TransferLegEvent = 'transfer-out' | 'card-payment';
+
+/** Events that become one transaction on their own. */
+export type StandaloneSmsEvent = Exclude<SmsEvent, TransferLegEvent>;
+
+export function isTransferLeg(event: SmsEvent): event is TransferLegEvent {
+  return event === 'transfer-out' || event === 'card-payment';
+}
 
 export interface ParsedSms {
   bank: string;
@@ -201,10 +218,12 @@ function extract(template: SmsTemplate, groups: Record<string, string | undefine
 }
 
 /**
- * How each SMS event is recorded. The switch is exhaustive: a new
- * SmsEvent does not compile until someone decides how it reports.
+ * How each stand-alone SMS event is recorded. The switch is exhaustive: a
+ * new SmsEvent does not compile until someone decides how it reports.
+ * Transfer legs are not accepted at all, by type: they have no shape of
+ * their own, only as half of a pair.
  */
-export function transactionShapeOf(event: SmsEvent): { kind: TransactionKind; direction: TransactionDirection } {
+export function transactionShapeOf(event: StandaloneSmsEvent): { kind: TransactionKind; direction: TransactionDirection } {
   switch (event) {
     case 'purchase':
       return { kind: 'expense', direction: 'debit' };

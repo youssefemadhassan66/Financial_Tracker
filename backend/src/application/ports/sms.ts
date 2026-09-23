@@ -13,7 +13,7 @@ export interface SmsParser {
   parse(sender: string, body: string): Promise<SmsParseResult>;
 }
 
-export type RawMessageStatus = 'pending' | 'parsed' | 'unparsed' | 'ignored';
+export type RawMessageStatus = 'pending' | 'parsed' | 'unparsed' | 'ignored' | 'awaiting_pair';
 
 export interface RawMessageRecord {
   id: string;
@@ -22,6 +22,8 @@ export interface RawMessageRecord {
   body: string;
   receivedAt: Date;
   status: RawMessageStatus;
+  /** What the parser read last time, if anything (see ParsePayload). */
+  parsedPayload: ParsePayload | null;
 }
 
 export interface RawMessageView extends RawMessageRecord {
@@ -54,14 +56,17 @@ export interface SmsInbox {
 
   list(userId: UserId, filter: { status?: RawMessageStatus; limit: number }): Promise<RawMessageView[]>;
 
-  /** Records why a message did not become a transaction. */
+  /**
+   * Records why a message did not become a transaction. False when a
+   * faster run already turned it into one, so nothing was changed.
+   */
   markNotTransaction(
     id: string,
     userId: UserId,
-    status: 'ignored' | 'unparsed',
+    status: 'ignored' | 'unparsed' | 'awaiting_pair',
     reason: string,
     payload: ParsePayload | null,
-  ): Promise<void>;
+  ): Promise<boolean>;
 
   /**
    * Saves the transaction AND marks the message parsed, atomically.
@@ -76,6 +81,22 @@ export interface SmsInbox {
     transaction: Transaction,
     payload: ParsePayload,
   ): Promise<'saved' | 'already-processed'>;
+
+  /** Transfer halves still waiting for a partner, received in [from, to]. */
+  listAwaitingPair(userId: UserId, from: Date, to: Date): Promise<RawMessageRecord[]>;
+
+  /**
+   * Turns two waiting halves into one transfer, atomically: BOTH messages
+   * are claimed and BOTH transactions inserted, or nothing changes.
+   * 'already-processed' when either half was taken by another run.
+   */
+  completeTransferPair(userId: UserId, legs: readonly [TransferPairLeg, TransferPairLeg]): Promise<'saved' | 'already-processed'>;
+}
+
+export interface TransferPairLeg {
+  messageId: string;
+  transaction: Transaction;
+  payload: ParsePayload;
 }
 
 /** Your own "this merchant is that category" memory. */

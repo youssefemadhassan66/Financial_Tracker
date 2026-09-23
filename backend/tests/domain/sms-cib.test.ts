@@ -156,23 +156,56 @@ describe('CIB SMS parsing', () => {
       });
     });
 
-    it('S9: account debit for transfer to another account, English (unrecognized)', () => {
+    it('S9: account debit for transfer to another account, English (transfer half A)', () => {
       const msg = 'Your account ending with ********2222 is debited with amount EGP 1,200.00DR On 07 SEP 2026 with transfer to another account. For more information, please contact 19666.';
       const result = parseWithTemplates(BANK_CATALOG, 'CIB', msg);
 
       expect(result).toEqual({
-        outcome: 'unrecognized',
-        reason: 'no template matched',
+        outcome: 'transaction',
+        templateId: 'cib.transfer-out.en.v1',
+        parsed: {
+          bank: 'CIB',
+          event: 'transfer-out',
+          currency: 'EGP',
+          amount: '1200.00',
+          merchant: 'Transfer to another account',
+          last4: '2222',
+        },
       });
     });
 
-    it('S10: credit card bill payment received, Arabic (unrecognized)', () => {
+    it('S10: credit card bill payment received, Arabic (transfer half B)', () => {
       const msg = 'تم سداد مبلغ 1200.00 جم فى بطاقتكم الائتمانية المنتهية بـ 1111 بتاريخ 26-09-07';
       const result = parseWithTemplates(BANK_CATALOG, 'CIB', msg);
 
       expect(result).toEqual({
-        outcome: 'unrecognized',
-        reason: 'no template matched',
+        outcome: 'transaction',
+        templateId: 'cib.card-payment.ar.v1',
+        parsed: {
+          bank: 'CIB',
+          event: 'card-payment',
+          currency: 'EGP',
+          amount: '1200.00',
+          merchant: 'Credit card payment',
+          last4: '1111',
+        },
+      });
+    });
+
+    it('reads the transfer halves in their variants', () => {
+      const debit = (digits: string, amount: string) =>
+        `Your account ending with ${digits} is debited with amount EGP ${amount} On 07 SEP 2026 with transfer to another account.`;
+      for (const [digits, amount] of [['2222********', '1,200.00DR'], ['2222', '1200.00 DR'], ['**2222', '1200.00']]) {
+        expect(parseWithTemplates(BANK_CATALOG, 'CIB', debit(digits!, amount!))).toMatchObject({
+          outcome: 'transaction',
+          parsed: { event: 'transfer-out', amount: '1200.00', last4: '2222' },
+        });
+      }
+
+      const payment = toArabicDigits('تم سداد مبلغ 1,200.00 جم في بطاقتكم الائتمانية المنتهية ب **1111 بتاريخ 26-09-07');
+      expect(parseWithTemplates(BANK_CATALOG, 'CIB', payment)).toMatchObject({
+        outcome: 'transaction',
+        parsed: { event: 'card-payment', amount: '1200.00', last4: '1111' },
       });
     });
   });

@@ -63,6 +63,8 @@ enum RawMessageStatus {
   parsed
   unparsed
   ignored
+  /// Half of an internal transfer, waiting for its other half.
+  awaiting_pair
 }
 
 enum CategoryKind {

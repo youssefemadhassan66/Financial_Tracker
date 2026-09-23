@@ -14,6 +14,7 @@ import {
 } from '../application/devices/device-keys.js';
 import { StoreRawSms } from '../application/ingest/store-raw-sms.js';
 import { ListSmsMessages, ProcessRawSms, ReprocessSms } from '../application/sms/process-sms.js';
+import { TransferPairing } from '../application/sms/transfer-pairing.js';
 import { TemplateSmsParser } from '../application/sms/template-sms-parser.js';
 import { BANK_CATALOG } from '../domain/sms/banks/index.js';
 import type { SmsCatalog } from '../domain/sms/sms-template.js';
@@ -80,6 +81,7 @@ export interface Container {
   authenticateDevice: AuthenticateDevice;
   storeRawSms: StoreRawSms;
   processRawSms: ProcessRawSms;
+  transferPairing: TransferPairing;
   reprocessSms: ReprocessSms;
   listSmsMessages: ListSmsMessages;
   listCategories: ListCategories;
@@ -148,6 +150,7 @@ export function buildContainer(
     authenticateDevice: new AuthenticateDevice(deviceKeys, opaqueTokens, clock),
     storeRawSms: new StoreRawSms(rawMessages, clock),
     processRawSms,
+    transferPairing: new TransferPairing(rawMessages, accounts, clock),
     reprocessSms: new ReprocessSms(rawMessages, processRawSms),
     listSmsMessages: new ListSmsMessages(rawMessages),
     listCategories: new ListCategories(categories),

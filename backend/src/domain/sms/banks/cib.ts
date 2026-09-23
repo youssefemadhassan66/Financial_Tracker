@@ -66,6 +66,30 @@ export const CIB_TEMPLATES: readonly SmsTemplate[] = [
     // Matches Arabic instant transfer without recipient name, with fixed merchant 'InstaPay transfer', currency token 'جم', spelling variants انه/إنه, and optional tatweel بـ?.
     pattern: /^يرجى العلم [إا]نه تم تنفيذ تحويل لحظي بمبلغ\s+(?<amount>[\d,]+(?:\.\d{2})?)\s+(?<currency>جم|[A-Z]{3})\s+من حسابك المنتهي بـ?\s*\**(?<last4>\d{4})\**\s+برقم مرجعي/,
   },
+
+  // Leg A of an internal transfer (e.g. paying the credit card bill):
+  // Your account ending with ********2222 is debited with amount EGP 1,200.00DR On 07 SEP 2026 with transfer to another account. For more information, please contact 19666.
+  {
+    id: 'cib.transfer-out.en.v1',
+    bank: 'CIB',
+    senders: ['CIB'],
+    event: 'transfer-out',
+    merchant: 'Transfer to another account',
+    // "DR" (debit) is glued to the amount; it sits outside the amount group
+    // so "1,200.00DR" still reads as 1200.00.
+    pattern: /^Your account ending with\s*\**(?<last4>\d{4})\**\s+is debited with amount\s+(?<currency>[A-Z]{3})\s+(?<amount>[\d,]+(?:\.\d{2})?)\s*(?:DR)?\s+On\s+.+?\s+with transfer to another account/,
+  },
+
+  // Leg B, the same money arriving on the credit card:
+  // تم سداد مبلغ 1200.00 جم فى بطاقتكم الائتمانية المنتهية بـ 1111 بتاريخ 26-09-07
+  {
+    id: 'cib.card-payment.ar.v1',
+    bank: 'CIB',
+    senders: ['CIB'],
+    event: 'card-payment',
+    merchant: 'Credit card payment',
+    pattern: /^تم سداد مبلغ\s+(?<amount>[\d,]+(?:\.\d{2})?)\s+(?<currency>جم|[A-Z]{3})\s+ف[يى]\s+بطاقتكم الائتمانية المنتهية بـ?\s*\**(?<last4>\d{4})\**/,
+  },
 ];
 
 export const CIB_IGNORE_RULES: readonly SmsIgnoreRule[] = [

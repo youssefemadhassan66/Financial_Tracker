@@ -6,7 +6,8 @@ import { defaultCountsAsSpending } from '../../domain/spending-policy.js';
 import { normalizeMerchantKey } from '../../domain/merchant-key.js';
 import { DomainError } from '../../domain/errors.js';
 import { newTransactionId, type UserId } from '../../domain/ids.js';
-import { transactionShapeOf, type ParsedSms } from '../../domain/sms/sms-template.js';
+import { isTransferLeg, transactionShapeOf, type ParsedSms, type StandaloneSmsEvent } from '../../domain/sms/sms-template.js';
+import type { Account } from '../../domain/account.js';
 import { NotFoundError } from '../errors.js';
 import type { Clock } from '../ports/clock.js';
 import type { AccountRepository, CategoryRepository, UserSettingsRepository } from '../ports/finance.js';
@@ -18,10 +19,12 @@ import type {
   SmsInbox,
   SmsParser,
 } from '../ports/sms.js';
+import { TransferPairing } from './transfer-pairing.js';
 
 export type ProcessOutcome =
-  | { status: 'parsed'; transactionId: string }
-  | { status: 'ignored' | 'unparsed'; reason: string }
+  /** pairedMessageId: set when this message completed a transfer pair. */
+  | { status: 'parsed'; transactionId: string; pairedMessageId?: string }
+  | { status: 'ignored' | 'unparsed' | 'awaiting_pair'; reason: string }
   | { status: 'already-processed' };
 
 /**
@@ -40,7 +43,11 @@ export class ProcessRawSms {
     private readonly merchantCategories: MerchantCategoryRepository,
     private readonly settings: UserSettingsRepository,
     private readonly clock: Clock,
-  ) {}
+  ) {
+    this.pairing = new TransferPairing(inbox, accounts, clock);
+  }
+
+  private readonly pairing: TransferPairing;
 
   async execute(userId: UserId, rawMessageId: string): Promise<ProcessOutcome> {
     const message = await this.inbox.findForUser(rawMessageId, userId);
@@ -62,10 +69,25 @@ export class ProcessRawSms {
     }
 
     const payload: ParsePayload = { templateId: result.templateId, ...result.parsed };
+    const parsed = result.parsed;
 
     let transaction: Transaction;
     try {
-      transaction = await this.buildTransaction(userId, result.parsed, message.receivedAt);
+      const account = await this.routeToAccount(userId, parsed);
+      const event = parsed.event;
+      if (isTransferLeg(event)) {
+        // Half of an internal transfer: never a transaction on its own.
+        assertLegAccountType(event, account);
+        return await this.pairing.offerLeg(
+          userId,
+          message,
+          event,
+          account,
+          Money.create(parsed.amount, account.currency),
+          payload,
+        );
+      }
+      transaction = await this.buildTransaction(userId, { ...parsed, event }, account, message.receivedAt);
     } catch (error) {
       // A DomainError here is a fact about THIS message (no matching
       // account, a merchant name with no letters): record it and move
@@ -85,7 +107,7 @@ export class ProcessRawSms {
     return { status: 'unparsed', reason };
   }
 
-  private async buildTransaction(userId: UserId, parsed: ParsedSms, receivedAt: Date): Promise<Transaction> {
+  private async routeToAccount(userId: UserId, parsed: ParsedSms): Promise<Account> {
     // Route by card digits. Guessing an account when the SMS names none
     // would put money in the wrong place with no visible error, so an
     // SMS without digits waits for a human instead.
@@ -114,6 +136,15 @@ export class ProcessRawSms {
         `A ${parsed.currency} charge on a ${account.currency} account needs currency conversion, which is not supported yet`,
       );
     }
+    return account;
+  }
+
+  private async buildTransaction(
+    userId: UserId,
+    parsed: ParsedSms & { event: StandaloneSmsEvent },
+    account: Account,
+    receivedAt: Date,
+  ): Promise<Transaction> {
 
     const { kind, direction } = transactionShapeOf(parsed.event);
     const merchantKey = normalizeMerchantKey(parsed.merchant);
@@ -161,6 +192,8 @@ export interface ReprocessSummary {
   parsed: number;
   unparsed: number;
   ignored: number;
+  /** Transfer halves still waiting for their other half. */
+  awaitingPair: number;
   /** Pass back as `after` to continue; null when everything was covered. */
   next: string | null;
 }
@@ -186,17 +219,28 @@ export class ReprocessSms {
       parsed: 0,
       unparsed: 0,
       ignored: 0,
+      awaitingPair: 0,
       // A full page means there may be more; a short page means done.
       next: ids.length === limit ? (ids[ids.length - 1] ?? null) : null,
     };
 
     // One at a time, oldest first: they share accounts and settings, and
     // a backlog of a few hundred regex runs does not need parallelism.
+    const waitingInBatch = new Set<string>();
     for (const id of ids) {
       const outcome = await this.processOne.execute(userId, id);
       summary.processed += 1;
-      if (outcome.status === 'parsed' || outcome.status === 'unparsed' || outcome.status === 'ignored') {
+      if (outcome.status === 'awaiting_pair') {
+        summary.awaitingPair += 1;
+        waitingInBatch.add(id);
+      } else if (outcome.status !== 'already-processed') {
         summary[outcome.status] += 1;
+      }
+      // A half counted as waiting earlier in this batch just got its
+      // partner: report where it ended up, not where it passed through.
+      if (outcome.status === 'parsed' && outcome.pairedMessageId !== undefined && waitingInBatch.delete(outcome.pairedMessageId)) {
+        summary.awaitingPair -= 1;
+        summary.parsed += 1;
       }
     }
     return summary;
@@ -209,5 +253,20 @@ export class ListSmsMessages {
 
   execute(userId: UserId, filter: { status?: RawMessageStatus; limit: number }): Promise<RawMessageView[]> {
     return this.inbox.list(userId, filter);
+  }
+}
+
+/**
+ * A transfer out must leave a bank account, and a card payment must land
+ * on a credit card. The wrong type means the digits point at the wrong
+ * account; pairing it anyway would move money between the wrong places.
+ */
+function assertLegAccountType(event: 'transfer-out' | 'card-payment', account: Account): void {
+  const isCard = account.type === 'credit_card';
+  if (event === 'card-payment' && !isCard) {
+    throw new DomainError(`Account "${account.getName()}" is not a credit card, but this SMS is a card payment`);
+  }
+  if (event === 'transfer-out' && isCard) {
+    throw new DomainError(`Account "${account.getName()}" is a credit card, but this SMS is a bank account debit`);
   }
 }
