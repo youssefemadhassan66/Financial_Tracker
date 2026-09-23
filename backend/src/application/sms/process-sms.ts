@@ -92,16 +92,17 @@ export class ProcessRawSms {
     if (parsed.last4 === null) {
       throw new DomainError('The SMS names no card or account digits, so it cannot be matched to an account');
     }
+    const digits = parsed.last4;
     const matches = (await this.accounts.listForUser(userId)).filter(
-      (a) => !a.isArchived() && a.last4 === parsed.last4,
+      (a) => !a.isArchived() && a.hasLast4(digits),
     );
     if (matches.length === 0) {
       throw new DomainError(
-        `No active account ends in ${parsed.last4}. Set last4 on the account, then reprocess.`,
+        `No active account ends in ${digits}. Add ${digits} to the account's card/account digits, then reprocess.`,
       );
     }
     if (matches.length > 1) {
-      throw new DomainError(`More than one active account ends in ${parsed.last4}; cannot tell which one`);
+      throw new DomainError(`More than one active account ends in ${digits}; cannot tell which one`);
     }
     const account = matches[0]!;
 

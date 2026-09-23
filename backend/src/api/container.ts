@@ -22,6 +22,7 @@ import {
   CreateCategory,
   ListAccounts,
   ListCategories,
+  UpdateAccount,
 } from '../application/finance/categories-and-accounts.js';
 import { ListTransactions, RecordTransaction, RecordTransfer } from '../application/finance/transactions.js';
 import { GetCategoryAnalytics } from '../application/analytics/category-analytics.js';
@@ -85,6 +86,7 @@ export interface Container {
   createCategory: CreateCategory;
   listAccounts: ListAccounts;
   createAccount: CreateAccount;
+  updateAccount: UpdateAccount;
   recordTransaction: RecordTransaction;
   recordTransfer: RecordTransfer;
   listTransactions: ListTransactions;
@@ -152,6 +154,7 @@ export function buildContainer(
     createCategory: new CreateCategory(categories),
     listAccounts: new ListAccounts(accounts),
     createAccount: new CreateAccount(accounts),
+    updateAccount: new UpdateAccount(accounts),
     recordTransaction: new RecordTransaction(accounts, categories, transactions, settings),
     recordTransfer: new RecordTransfer(accounts, transactions),
     listTransactions: new ListTransactions(transactions),

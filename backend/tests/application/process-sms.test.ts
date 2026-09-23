@@ -129,7 +129,7 @@ function account(name: string, last4: string | undefined, options: { currency?: 
     name,
     type: 'credit_card',
     currency: options.currency ?? 'EGP',
-    ...(last4 === undefined ? {} : { last4 }),
+    ...(last4 === undefined ? {} : { last4s: [last4] }),
   });
   if (options.archived === true) a.archive();
   return a;
@@ -155,6 +155,7 @@ describe('ProcessRawSms', () => {
       create: async () => undefined,
       findForUser: async () => null,
       listForUser: async (userId) => accounts.filter((a) => a.userId === userId),
+      update: async () => undefined,
     };
     const categoryRepo: CategoryRepository = {
       listForUser: async () => categoryRecords,

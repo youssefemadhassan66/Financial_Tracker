@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Container } from '../container.js';
 import { requireUser } from '../middleware/authenticate.js';
 import {
+  accountIdParams,
   analyticsQuery,
   createAccountBody,
   createCategoryBody,
@@ -12,6 +13,7 @@ import {
   subscriptionActionParams,
   subscriptionListQuery,
   subscriptionSummaryQuery,
+  updateAccountBody,
 } from '../validation/finance-schemas.js';
 
 /**
@@ -52,6 +54,12 @@ export function financeRouter(container: Container): Router {
   router.post('/accounts', auth, async (req, res) => {
     const input = createAccountBody.parse(req.body);
     res.status(201).json({ account: await container.createAccount.execute(req.auth!.userId, defined(input)) });
+  });
+
+  router.patch('/accounts/:id', auth, async (req, res) => {
+    const { id } = accountIdParams.parse(req.params);
+    const input = updateAccountBody.parse(req.body);
+    res.json({ account: await container.updateAccount.execute(req.auth!.userId, id, defined(input)) });
   });
 
   // --- transactions ----------------------------------------------------
