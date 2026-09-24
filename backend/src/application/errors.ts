@@ -44,3 +44,8 @@ export class NotFoundError extends ApplicationError {
 export class ConflictError extends ApplicationError {
   readonly code = 'CONFLICT';
 }
+
+/** An upload that is not a PDF we can read: corrupt, encrypted, or too big. */
+export class InvalidPdfError extends ApplicationError {
+  readonly code = 'INVALID_PDF';
+}
