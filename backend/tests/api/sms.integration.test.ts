@@ -5,6 +5,10 @@ import { buildContainer } from '../../src/api/container.js';
 import { createServer } from '../../src/api/server.js';
 import { getPrismaClient } from '../../src/infrastructure/persistence/prisma-client.js';
 import { PrismaRawMessageRepository } from '../../src/infrastructure/persistence/prisma-raw-message-repository.js';
+import { PrismaAvailableBalanceRepository } from '../../src/infrastructure/persistence/prisma-finance-repositories.js';
+import { Account } from '../../src/domain/account.js';
+import { Money } from '../../src/domain/money.js';
+import { newAccountId, newUserId } from '../../src/domain/ids.js';
 import { systemClock } from '../../src/infrastructure/system-clock.js';
 import { BANK_CATALOG } from '../../src/domain/sms/banks/index.js';
 import type { SmsCatalog } from '../../src/domain/sms/sms-template.js';
@@ -327,5 +331,75 @@ suite('credit card payment = one internal transfer', () => {
     expect(result).toBe('already-processed');
     const statuses = await prisma.rawMessage.findMany({ where: { id: { in: [a.body.id, b.body.id] } }, select: { status: true } });
     expect(statuses.map((r) => r.status)).toEqual(['awaiting_pair', 'awaiting_pair']);
+  });
+});
+
+suite('money coming in, and the balance the bank reports', () => {
+  let me: Awaited<ReturnType<typeof newUser>>;
+  let other: Awaited<ReturnType<typeof newUser>>;
+
+  // Fake digits and names only.
+  const purchase = (balance: string) =>
+    `تم خصم مبلغ EGP 50.00 من بطاقة الخصم المباشر المنتهية بـ **4444 عند TEST CAFE في 18/09/26 03:16 ، الرصيد المتاح EGP ${balance}`;
+  const incoming = 'يرجى العلم انه تم تنفيذ تحويل لحظي بمبلغ 2,500.00 جم إلى حسابك المنتهي بـ ********2222 من SARA HASSAN TEST برقم مرجعي c9d0e1f2 بتاريخ 2026-09-12 18:47 للمزيد، برجاء الاتصال بـ 19666';
+
+  type AccountBody = { name: string; available: { amount: string; reportedAt: string } | null };
+  const current = async (who = me) =>
+    ((await who.get('/api/accounts')).body.accounts as AccountBody[]).find((a) => a.name === 'CIB Current');
+
+  beforeAll(async () => {
+    me = await newUser();
+    other = await newUser();
+    await me.post('/api/accounts', { name: 'CIB Current', type: 'checking', currency: 'EGP', last4s: ['2222', '4444'] });
+  });
+
+  it('records an incoming InstaPay transfer as income from the sender', async () => {
+    const res = await me.sms(incoming, 40, 'CIB');
+    expect(res.body.processing).toBe('parsed');
+    const txs = (await me.get('/api/transactions')).body.transactions as object[];
+    expect(txs).toContainEqual(
+      expect.objectContaining({ amount: '2500.00', merchant: 'SARA HASSAN TEST', kind: 'income', direction: 'credit', countsAsSpending: false }),
+    );
+  });
+
+  it('shows no balance until an SMS reports one', async () => {
+    expect((await current())?.available).toBeNull();
+  });
+
+  it('keeps the newest reported balance, whatever order the SMS arrive in', async () => {
+    await me.sms(purchase('2,188.16'), 10, 'CIB');
+    expect((await current())?.available).toEqual({ amount: '2188.16', reportedAt: expect.any(String) });
+    const tenMinutesAgo = (await current())!.available!.reportedAt;
+
+    // A late SMS from BEFORE the one above must not overwrite it.
+    await me.sms(purchase('9,999.00'), 30, 'CIB');
+    expect((await current())?.available).toEqual({ amount: '2188.16', reportedAt: tenMinutesAgo });
+
+    await me.sms(purchase('0.00'), 2, 'CIB');
+    expect((await current())?.available?.amount).toBe('0.00');
+  });
+
+  it('keeps the newer one when two reports race on a fresh account', async () => {
+    const account = await prisma.account.create({
+      data: { userId: (await prisma.user.findUniqueOrThrow({ where: { email: emails.at(-2)! } })).id, name: 'Race', type: 'checking', currency: 'EGP' },
+    });
+    const repo = new PrismaAvailableBalanceRepository(prisma);
+    const restored = Account.restore(
+      { id: newAccountId(account.id), userId: newUserId(account.userId), name: 'Race', type: 'checking', currency: 'EGP', last4s: [] },
+      null,
+    );
+    const older = new Date(Date.now() - 60_000);
+    const newer = new Date();
+    await Promise.all([
+      repo.record(restored, Money.create('100.00', 'EGP'), newer),
+      repo.record(restored, Money.create('999.00', 'EGP'), older),
+    ]);
+    const row = await prisma.accountAvailableBalance.findUniqueOrThrow({ where: { accountId: account.id } });
+    expect(row.amount.toFixed(2)).toBe('100.00');
+    expect(row.reportedAt.getTime()).toBe(newer.getTime());
+  });
+
+  it("never shows one user's balance to another", async () => {
+    expect((await other.get('/api/accounts')).body.accounts).toEqual([]);
   });
 });

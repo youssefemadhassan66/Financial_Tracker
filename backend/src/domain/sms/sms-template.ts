@@ -2,7 +2,7 @@ import { DomainError } from '../errors.js';
 import type { Currency } from '../currency.js';
 import type { TransactionKind } from '../transaction-kind.js';
 import type { TransactionDirection } from '../transaction.js';
-import { currencyFromSmsToken, normalizeSmsText, parseSmsAmount } from './sms-text.js';
+import { currencyFromSmsToken, normalizeSmsText, parseSmsAmount, parseSmsBalance } from './sms-text.js';
 
 /**
  * What a bank SMS REPORTS, in the bank's terms. Mapped to our
@@ -44,6 +44,13 @@ export interface ParsedSms {
   merchant: string;
   /** Card or account digits the SMS mentions; routes it to an account. */
   last4: string | null;
+  /**
+   * What the bank says is still available AFTER this transaction: the
+   * balance of a debit account, the remaining limit of a credit card.
+   * Both null when the SMS does not say. Decimal string, may be "0.00".
+   */
+  availableAmount: string | null;
+  availableCurrency: Currency | null;
 }
 
 export type SmsParseResult =
@@ -62,6 +69,8 @@ export type SmsParseResult =
  *   currency (or set `currency`, for SMS that never state it)
  *   merchant (or set `merchant`, e.g. "ATM" for a cash withdrawal)
  *   last4    (optional, exactly 4 digits)
+ *   available + availableCurrency (optional, always together): the
+ *            balance or limit left after the transaction
  */
 export interface SmsTemplate {
   /** Stable id, stored with every parsed message: "cib.purchase.en.v1". */
@@ -120,6 +129,9 @@ export function validateCatalog(catalog: SmsCatalog): void {
     }
     if (!groups.has('merchant') && t.merchant === undefined) {
       throw new DomainError(`SMS template "${t.id}" needs a merchant group or a fixed merchant`);
+    }
+    if (groups.has('available') !== groups.has('availableCurrency')) {
+      throw new DomainError(`SMS template "${t.id}" needs both (?<available>) and (?<availableCurrency>), or neither`);
     }
     if (t.senders.length === 0) {
       throw new DomainError(`SMS template "${t.id}" has no senders`);
@@ -214,7 +226,32 @@ function extract(template: SmsTemplate, groups: Record<string, string | undefine
     currency,
     merchant,
     last4,
+    ...readAvailable(groups['available'], groups['availableCurrency']),
   };
+}
+
+/**
+ * The available balance is a side note, not the transaction. If it is
+ * unreadable (an unknown currency code, odd digit grouping) we drop IT,
+ * never the purchase: losing a balance costs nothing, the next SMS brings
+ * a new one; losing the purchase loses real spending.
+ */
+function readAvailable(
+  amountText: string | undefined,
+  currencyText: string | undefined,
+): Pick<ParsedSms, 'availableAmount' | 'availableCurrency'> {
+  const none = { availableAmount: null, availableCurrency: null };
+  if (amountText === undefined || currencyText === undefined) {
+    return none;
+  }
+  try {
+    return { availableAmount: parseSmsBalance(amountText), availableCurrency: currencyFromSmsToken(currencyText) };
+  } catch (error) {
+    if (error instanceof DomainError) {
+      return none;
+    }
+    throw error;
+  }
 }
 
 /**

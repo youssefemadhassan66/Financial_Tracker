@@ -1,4 +1,5 @@
 import type { Account } from '../../domain/account.js';
+import type { Money } from '../../domain/money.js';
 import type { Transaction, TransactionDirection } from '../../domain/transaction.js';
 import type { Subscription, SubscriptionStatus } from '../../domain/subscription.js';
 import type { CategoryKind } from '../../domain/default-categories.js';
@@ -39,6 +40,24 @@ export interface AccountRepository {
   listForUser(userId: UserId): Promise<Account[]>;
   /** Saves name, card/account digits and archive state. */
   update(account: Account): Promise<void>;
+}
+
+/** What the bank last said is still available on an account. */
+export interface ReportedAvailable {
+  /** Decimal string in the account's currency. */
+  amount: string;
+  reportedAt: Date;
+}
+
+export interface AvailableBalanceRepository {
+  /**
+   * Keeps the NEWEST report per account. SMS can arrive late or be
+   * reprocessed out of order, so an older report never replaces a newer
+   * one. `account` must already be loaded for its user.
+   */
+  record(account: Account, available: Money, reportedAt: Date): Promise<void>;
+  /** The latest report of each of this user's accounts, by account id. */
+  listForUser(userId: UserId): Promise<Map<string, ReportedAvailable>>;
 }
 
 export interface TransactionFilter {

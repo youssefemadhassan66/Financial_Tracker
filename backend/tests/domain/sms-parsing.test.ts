@@ -3,6 +3,7 @@ import {
   currencyFromSmsToken,
   normalizeSmsText,
   parseSmsAmount,
+  parseSmsBalance,
 } from '../../src/domain/sms/sms-text.js';
 import {
   isTransferLeg,
@@ -73,6 +74,17 @@ describe('parseSmsAmount', () => {
 
   it('rejects a zero amount', () => {
     expect(() => parseSmsAmount('0.00')).toThrow(DomainError);
+  });
+});
+
+describe('parseSmsBalance', () => {
+  it('accepts zero, which is a real balance', () => {
+    expect(parseSmsBalance('0.00')).toBe('0.00');
+  });
+
+  it('is as strict as parseSmsAmount about grouping', () => {
+    expect(parseSmsBalance('19,381.88')).toBe('19381.88');
+    expect(() => parseSmsBalance('1.250,00')).toThrow(DomainError);
   });
 });
 
@@ -149,6 +161,8 @@ describe('parseWithTemplates', () => {
         currency: 'EGP',
         merchant: 'CARREFOUR MAADI',
         last4: '1234',
+        availableAmount: null,
+        availableCurrency: null,
       },
     });
   });
@@ -235,6 +249,11 @@ describe('validateCatalog', () => {
     const noCurrency: SmsTemplate = { ...WITHDRAWAL };
     delete noCurrency.currency;
     expect(() => validateCatalog({ templates: [noCurrency], ignoreRules: [] })).toThrow(/currency/);
+  });
+
+  it('rejects a template with a balance amount but no balance currency', () => {
+    const bad = { ...PURCHASE, pattern: new RegExp(`${PURCHASE.pattern.source}(?: left (?<available>[\\d.]+))?`) };
+    expect(() => validateCatalog({ templates: [bad], ignoreRules: [] })).toThrow(/availableCurrency/);
   });
 
   it('rejects duplicate ids', () => {
