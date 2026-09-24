@@ -56,6 +56,8 @@ enum TransactionDirection {
 enum TransactionSource {
   sms
   manual
+  /// Read from a monthly bank statement: a fee, cashback or purchase no SMS reported.
+  statement
 }
 
 enum RawMessageStatus {
@@ -102,16 +104,17 @@ model User {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  settings      UserSettings?
-  accounts      Account[]
-  categories    Category[]
-  transactions  Transaction[]
-  merchantMap   MerchantCategoryMap[]
-  rawMessages   RawMessage[]
-  refreshTokens RefreshToken[]
-  deviceKeys    DeviceKey[]
-  budgets       Budget[]
-  subscriptions Subscription[]
+  settings       UserSettings?
+  accounts       Account[]
+  categories     Category[]
+  transactions   Transaction[]
+  merchantMap    MerchantCategoryMap[]
+  rawMessages    RawMessage[]
+  refreshTokens  RefreshToken[]
+  deviceKeys     DeviceKey[]
+  budgets        Budget[]
+  subscriptions  Subscription[]
+  cardStatements CardStatement[]
 
   @@map("users")
 }
@@ -211,6 +214,7 @@ model Account {
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   creditCard    CreditCardDetails?
+  statements    CardStatement[]
   available     AccountAvailableBalance?
   transactions  Transaction[]
   subscriptions Subscription[]
@@ -255,6 +259,64 @@ model AccountAvailableBalance {
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("account_available_balances")
+}
+
+/// One monthly credit card statement, as the bank printed it. Imported
+/// from the e-statement PDF; a month is imported once per account.
+model CardStatement {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accountId String  @map("account_id") @db.Uuid
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// The month the statement closes.
+  periodYear  Int @map("period_year") @db.SmallInt
+  periodMonth Int @map("period_month") @db.SmallInt
+
+  dueDate         DateTime @map("due_date") @db.Date
+  creditLimit     Decimal  @map("credit_limit") @db.Decimal(18, 2)
+  availableCredit Decimal  @map("available_credit") @db.Decimal(18, 2)
+  totalDue        Decimal  @map("total_due") @db.Decimal(18, 2)
+  minimumDue      Decimal  @map("minimum_due") @db.Decimal(18, 2)
+  /// Signed: negative when the card was in credit.
+  openingBalance  Decimal  @map("opening_balance") @db.Decimal(18, 2)
+  closingBalance  Decimal  @map("closing_balance") @db.Decimal(18, 2)
+
+  importedAt DateTime @default(now()) @map("imported_at") @db.Timestamptz(3)
+
+  lines CardStatementLine[]
+
+  @@unique([accountId, periodYear, periodMonth])
+  @@index([userId])
+  @@map("card_statements")
+}
+
+/// One line of a statement, and the transaction it matched or created.
+model CardStatementLine {
+  id          String        @id @default(uuid()) @db.Uuid
+  statementId String        @map("statement_id") @db.Uuid
+  statement   CardStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  /// Position on the statement, from 1.
+  lineNo          Int                  @map("line_no") @db.SmallInt
+  transactionDate DateTime             @map("transaction_date") @db.Date
+  postingDate     DateTime             @map("posting_date") @db.Date
+  description     String
+  amount          Decimal              @db.Decimal(18, 2)
+  direction       TransactionDirection
+  /// Rows the bank printed under the line, e.g. the original "USD21,60".
+  notes           String[]             @default([])
+
+  /// Null only for a card payment no SMS pair matched: half of a
+  /// transfer is never recorded alone, so it waits for you.
+  /// Unique: one transaction is confirmed by at most one line.
+  transactionId String?      @unique @map("transaction_id") @db.Uuid
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@unique([statementId, lineNo])
+  @@map("card_statement_lines")
 }
 
 // ---------------------------------------------------------------------
@@ -342,8 +404,8 @@ model Transaction {
   accountId String  @map("account_id") @db.Uuid
   account   Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
-  amount   Decimal              @db.Decimal(18, 2)
-  currency Currency
+  amount    Decimal              @db.Decimal(18, 2)
+  currency  Currency
   direction TransactionDirection
 
   /// WHAT HAPPENED — an immutable fact.
@@ -357,9 +419,9 @@ model Transaction {
   categoryId String?   @map("category_id") @db.Uuid
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
-  merchantKey String  @map("merchant_key")
+  merchantKey String @map("merchant_key")
   /// Merchant text exactly as received — may be Arabic, e.g. "كارفور المعادي".
-  merchantRaw String  @map("merchant_raw")
+  merchantRaw String @map("merchant_raw")
 
   occurredAt DateTime          @map("occurred_at") @db.Timestamptz(3)
   source     TransactionSource
@@ -371,6 +433,9 @@ model Transaction {
   rawMessage   RawMessage? @relation(fields: [rawMessageId], references: [id], onDelete: SetNull)
 
   trade Trade?
+
+  /// The statement line that confirms (or created) this transaction.
+  statementLine CardStatementLine?
 
   /// Set when this charge is a payment of a known subscription. Filled
   /// in by the SMS parser once it matches merchant keys (a later module).
@@ -486,8 +551,8 @@ model Budget {
 // ---------------------------------------------------------------------
 
 model Holding {
-  id        String  @id @default(uuid()) @db.Uuid
-  accountId String  @map("account_id") @db.Uuid
+  id        String @id @default(uuid()) @db.Uuid
+  accountId String @map("account_id") @db.Uuid
 
   /// e.g. "TMG", "WE" on EGX.
   symbol   String
@@ -592,4 +657,3 @@ model Subscription {
   @@index([userId, status])
   @@map("subscriptions")
 }
-

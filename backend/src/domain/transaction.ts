@@ -12,7 +12,7 @@ import type {
 } from './ids.js';
 
 export type TransactionDirection = 'debit' | 'credit';
-export type TransactionSource = 'sms' | 'manual';
+export type TransactionSource = 'sms' | 'manual' | 'statement';
 
 export interface CreateTransactionInput {
   id: TransactionId;
