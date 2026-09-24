@@ -44,6 +44,7 @@ import {
 } from '../infrastructure/persistence/prisma-raw-message-repository.js';
 import {
   PrismaAccountRepository,
+  PrismaAvailableBalanceRepository,
   PrismaAnalyticsQueries,
   PrismaCategoryRepository,
   PrismaSubscriptionRepository,
@@ -114,6 +115,7 @@ export function buildContainer(
   const rawMessages = new PrismaRawMessageRepository(prisma);
   const categories = new PrismaCategoryRepository(prisma);
   const accounts = new PrismaAccountRepository(prisma);
+  const availableBalances = new PrismaAvailableBalanceRepository(prisma);
   const transactions = new PrismaTransactionRepository(prisma);
   const settings = new PrismaUserSettingsRepository(prisma);
   const subscriptions = new PrismaSubscriptionRepository(prisma);
@@ -127,6 +129,7 @@ export function buildContainer(
     categories,
     merchantCategories,
     settings,
+    availableBalances,
     clock,
   );
 
@@ -155,9 +158,9 @@ export function buildContainer(
     listSmsMessages: new ListSmsMessages(rawMessages),
     listCategories: new ListCategories(categories),
     createCategory: new CreateCategory(categories),
-    listAccounts: new ListAccounts(accounts),
+    listAccounts: new ListAccounts(accounts, availableBalances),
     createAccount: new CreateAccount(accounts),
-    updateAccount: new UpdateAccount(accounts),
+    updateAccount: new UpdateAccount(accounts, availableBalances),
     recordTransaction: new RecordTransaction(accounts, categories, transactions, settings),
     recordTransfer: new RecordTransfer(accounts, transactions),
     listTransactions: new ListTransactions(transactions),

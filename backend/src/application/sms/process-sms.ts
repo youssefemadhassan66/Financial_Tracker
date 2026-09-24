@@ -10,7 +10,12 @@ import { isTransferLeg, transactionShapeOf, type ParsedSms, type StandaloneSmsEv
 import type { Account } from '../../domain/account.js';
 import { NotFoundError } from '../errors.js';
 import type { Clock } from '../ports/clock.js';
-import type { AccountRepository, CategoryRepository, UserSettingsRepository } from '../ports/finance.js';
+import type {
+  AccountRepository,
+  AvailableBalanceRepository,
+  CategoryRepository,
+  UserSettingsRepository,
+} from '../ports/finance.js';
 import type {
   MerchantCategoryRepository,
   ParsePayload,
@@ -42,6 +47,7 @@ export class ProcessRawSms {
     private readonly categories: CategoryRepository,
     private readonly merchantCategories: MerchantCategoryRepository,
     private readonly settings: UserSettingsRepository,
+    private readonly balances: AvailableBalanceRepository,
     private readonly clock: Clock,
   ) {
     this.pairing = new TransferPairing(inbox, accounts, clock);
@@ -72,8 +78,9 @@ export class ProcessRawSms {
     const parsed = result.parsed;
 
     let transaction: Transaction;
+    let account: Account;
     try {
-      const account = await this.routeToAccount(userId, parsed);
+      account = await this.routeToAccount(userId, parsed);
       const event = parsed.event;
       if (isTransferLeg(event)) {
         // Half of an internal transfer: never a transaction on its own.
@@ -99,7 +106,26 @@ export class ProcessRawSms {
     }
 
     const saved = await this.inbox.completeWithTransaction(message.id, userId, transaction, payload);
-    return saved === 'saved' ? { status: 'parsed', transactionId: transaction.id } : { status: 'already-processed' };
+    if (saved !== 'saved') {
+      return { status: 'already-processed' };
+    }
+    await this.recordAvailable(account, parsed, transaction.occurredAt);
+    return { status: 'parsed', transactionId: transaction.id };
+  }
+
+  /**
+   * Keeps the balance the SMS reported, if any. Only after the save, so
+   * only the run that won the message records it. Not in the same
+   * database transaction on purpose: it is a side note, and the next SMS
+   * brings a fresh one anyway.
+   */
+  private async recordAvailable(account: Account, parsed: ParsedSms, reportedAt: Date): Promise<void> {
+    // "Available EGP 50,000" next to a USD account is some other number,
+    // not this account's balance.
+    if (parsed.availableAmount === null || parsed.availableCurrency !== account.currency) {
+      return;
+    }
+    await this.balances.record(account, Money.create(parsed.availableAmount, account.currency), reportedAt);
   }
 
   private async unparsed(id: string, userId: UserId, reason: string, payload: ParsePayload | null): Promise<ProcessOutcome> {

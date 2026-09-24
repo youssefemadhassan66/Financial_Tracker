@@ -17,12 +17,14 @@ import { ConflictError } from '../../application/errors.js';
 import type {
   AccountRepository,
   AnalyticsQueries,
+  AvailableBalanceRepository,
   CategoryRecord,
   CategoryRepository,
   CategoryTotalRow,
   InstantRange,
   KindTotalRow,
   NewCategory,
+  ReportedAvailable,
   SubscriptionRepository,
   TransactionFilter,
   TransactionRepository,
@@ -117,6 +119,42 @@ export class PrismaAccountRepository implements AccountRepository {
   async listForUser(userId: UserId): Promise<Account[]> {
     const rows = await this.prisma.account.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
     return rows.map(toAccount);
+  }
+}
+
+export class PrismaAvailableBalanceRepository implements AvailableBalanceRepository {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async record(account: Account, available: Money, reportedAt: Date): Promise<void> {
+    const data = { amount: available.toDecimalString(), reportedAt };
+    // Replace only a report OLDER than this one. The date check sits in
+    // the WHERE, so it is decided atomically by the database, not by a
+    // read-then-write that a racing SMS could slip between.
+    const olderOnly = { accountId: account.id, reportedAt: { lt: reportedAt } };
+    const updated = await this.prisma.accountAvailableBalance.updateMany({ where: olderOnly, data });
+    if (updated.count > 0) {
+      return;
+    }
+    // Nothing updated: either no report yet (create one) or the stored
+    // one is newer or the same (keep it; the create then fails).
+    try {
+      await this.prisma.accountAvailableBalance.create({ data: { accountId: account.id, ...data } });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      // Another run created the row between our update and our create.
+      // It may be older than ours, so ask the same question once more.
+      await this.prisma.accountAvailableBalance.updateMany({ where: olderOnly, data });
+    }
+  }
+
+  async listForUser(userId: UserId): Promise<Map<string, ReportedAvailable>> {
+    const rows = await this.prisma.accountAvailableBalance.findMany({
+      where: { account: { userId } },
+      select: { accountId: true, amount: true, reportedAt: true },
+    });
+    return new Map(rows.map((r) => [r.accountId, { amount: r.amount.toFixed(2), reportedAt: r.reportedAt }]));
   }
 }
 

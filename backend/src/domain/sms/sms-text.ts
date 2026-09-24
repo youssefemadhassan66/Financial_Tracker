@@ -58,15 +58,23 @@ const PLAIN_AMOUNT = /^\d+(?:\.\d{1,2})?$/;
  * your totals.
  */
 export function parseSmsAmount(raw: string): string {
-  const text = normalizeSmsText(raw).replace(/ /g, '');
-  if (!GROUPED_AMOUNT.test(text) && !PLAIN_AMOUNT.test(text)) {
-    throw new DomainError(`Unreadable amount "${raw}"`);
-  }
-  const plain = text.replace(/,/g, '');
+  const plain = parseSmsBalance(raw);
   if (/^0+(?:\.0+)?$/.test(plain)) {
     throw new DomainError('Amount cannot be zero');
   }
   return plain;
+}
+
+/**
+ * Same strict reading as parseSmsAmount, but zero is allowed: a balance
+ * of 0.00 is a real balance, while a transaction of 0.00 is a misread.
+ */
+export function parseSmsBalance(raw: string): string {
+  const text = normalizeSmsText(raw).replace(/ /g, '');
+  if (!GROUPED_AMOUNT.test(text) && !PLAIN_AMOUNT.test(text)) {
+    throw new DomainError(`Unreadable amount "${raw}"`);
+  }
+  return text.replace(/,/g, '');
 }
 
 /**

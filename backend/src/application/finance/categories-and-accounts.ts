@@ -5,7 +5,13 @@ import type { CategoryKind } from '../../domain/default-categories.js';
 import type { Currency } from '../../domain/currency.js';
 import { newAccountId, type UserId } from '../../domain/ids.js';
 import { ConflictError, NotFoundError } from '../errors.js';
-import type { AccountRepository, CategoryRecord, CategoryRepository } from '../ports/finance.js';
+import type {
+  AccountRepository,
+  AvailableBalanceRepository,
+  CategoryRecord,
+  CategoryRepository,
+  ReportedAvailable,
+} from '../ports/finance.js';
 
 // ---------------------------------------------------------------------
 // Categories
@@ -48,9 +54,11 @@ export interface AccountDto {
   last4s: string[];
   isLiability: boolean;
   archived: boolean;
+  /** What the bank last said is still available (from SMS); null until one says. */
+  available: ReportedAvailable | null;
 }
 
-export function toAccountDto(account: Account): AccountDto {
+export function toAccountDto(account: Account, available: ReportedAvailable | null): AccountDto {
   return {
     id: account.id,
     name: account.getName(),
@@ -59,6 +67,7 @@ export function toAccountDto(account: Account): AccountDto {
     last4s: [...account.getLast4s()],
     isLiability: account.isLiability(),
     archived: account.isArchived(),
+    available,
   };
 }
 
@@ -102,7 +111,7 @@ export class CreateAccount {
     });
     await assertLast4sFree(this.accounts, account);
     await this.accounts.create(account);
-    return toAccountDto(account);
+    return toAccountDto(account, null);
   }
 }
 
@@ -113,7 +122,10 @@ export interface UpdateAccountInput {
 }
 
 export class UpdateAccount {
-  constructor(private readonly accounts: AccountRepository) {}
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly balances: AvailableBalanceRepository,
+  ) {}
 
   async execute(userId: UserId, accountId: string, input: UpdateAccountInput): Promise<AccountDto> {
     const account = await this.accounts.findForUser(accountId, userId);
@@ -128,14 +140,19 @@ export class UpdateAccount {
       await assertLast4sFree(this.accounts, account);
     }
     await this.accounts.update(account);
-    return toAccountDto(account);
+    const available = (await this.balances.listForUser(userId)).get(account.id) ?? null;
+    return toAccountDto(account, available);
   }
 }
 
 export class ListAccounts {
-  constructor(private readonly accounts: AccountRepository) {}
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly balances: AvailableBalanceRepository,
+  ) {}
 
   async execute(userId: UserId): Promise<AccountDto[]> {
-    return (await this.accounts.listForUser(userId)).map(toAccountDto);
+    const [accounts, available] = await Promise.all([this.accounts.listForUser(userId), this.balances.listForUser(userId)]);
+    return accounts.map((a) => toAccountDto(a, available.get(a.id) ?? null));
   }
 }

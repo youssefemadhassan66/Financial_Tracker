@@ -3,8 +3,10 @@ import { ProcessRawSms, ReprocessSms } from '../../src/application/sms/process-s
 import { TemplateSmsParser } from '../../src/application/sms/template-sms-parser.js';
 import type {
   AccountRepository,
+  AvailableBalanceRepository,
   CategoryRecord,
   CategoryRepository,
+  ReportedAvailable,
   UserSettingsRepository,
 } from '../../src/application/ports/finance.js';
 import type {
@@ -21,6 +23,7 @@ import { PAIR_WINDOW_MS, TransferPairing } from '../../src/application/sms/trans
 import { DomainError } from '../../src/domain/errors.js';
 import { Account } from '../../src/domain/account.js';
 import type { Transaction } from '../../src/domain/transaction.js';
+import type { Money } from '../../src/domain/money.js';
 import { DEFAULT_SPENDING_POLICY } from '../../src/domain/spending-policy.js';
 import { BANK_CATALOG } from '../../src/domain/sms/banks/index.js';
 import type { SmsTemplate } from '../../src/domain/sms/sms-template.js';
@@ -42,7 +45,7 @@ const TEMPLATES: SmsTemplate[] = [
     bank: 'Test Bank',
     senders: ['TESTBANK'],
     event: 'purchase',
-    pattern: /card (?<last4>\d{4}) charged (?<currency>[A-Z]{3}) (?<amount>[\d,.]+) at (?<merchant>.+)$/,
+    pattern: /card (?<last4>\d{4}) charged (?<currency>[A-Z]{3}) (?<amount>[\d,.]+) at (?<merchant>.+?)(?:, available (?<availableCurrency>[A-Z]{3}) (?<available>[\d,.]+))?$/,
   },
   {
     id: 'test.refund',
@@ -168,6 +171,17 @@ function account(name: string, last4: string | undefined, options: { currency?: 
   return a;
 }
 
+/** Records every call; keeping only the newest is the database's job. */
+class FakeBalances implements AvailableBalanceRepository {
+  readonly recorded: { accountId: string; amount: string; at: Date }[] = [];
+  async record(account: Account, available: Money, reportedAt: Date): Promise<void> {
+    this.recorded.push({ accountId: account.id, amount: available.toString(), at: reportedAt });
+  }
+  async listForUser(): Promise<Map<string, ReportedAvailable>> {
+    return new Map();
+  }
+}
+
 const categoryRecords: CategoryRecord[] = [
   { id: FOOD, name: 'Food & Dining', kind: 'spending', icon: null, color: null, isSystem: true },
   { id: SALARY, name: 'Salary', kind: 'income', icon: null, color: null, isSystem: true },
@@ -177,10 +191,12 @@ describe('ProcessRawSms', () => {
   let inbox: FakeInbox;
   let accounts: Account[];
   let merchantMap: Map<string, CategoryId>;
+  let balances: FakeBalances;
   let processOne: ProcessRawSms;
 
   beforeEach(() => {
     inbox = new FakeInbox();
+    balances = new FakeBalances();
     accounts = [account('1', '1234')];
     merchantMap = new Map();
 
@@ -210,6 +226,7 @@ describe('ProcessRawSms', () => {
       categoryRepo,
       merchants,
       settings,
+      balances,
       new FakeClock(NOW),
     );
   });
@@ -320,6 +337,35 @@ describe('ProcessRawSms', () => {
     expect(inbox.saved).toHaveLength(0);
   });
 
+  it('keeps the balance the SMS reports, on the same account, at the SMS time', async () => {
+    const at = new Date(NOW.getTime() - 5 * 60_000);
+    inbox.add('m1', 'card 1234 charged EGP 200.00 at TEST CAFE, available EGP 2,188.16', { receivedAt: at });
+    await processOne.execute(USER, 'm1');
+    expect(inbox.saved[0]!.merchantRaw).toBe('TEST CAFE');
+    expect(balances.recorded).toEqual([{ accountId: accounts[0]!.id, amount: '2188.16 EGP', at }]);
+  });
+
+  it('records nothing when the SMS states no balance', async () => {
+    inbox.add('m1', 'card 1234 charged EGP 200.00 at TEST CAFE');
+    await processOne.execute(USER, 'm1');
+    expect(inbox.saved).toHaveLength(1);
+    expect(balances.recorded).toEqual([]);
+  });
+
+  it('ignores a balance in another currency than the account', async () => {
+    inbox.add('m1', 'card 1234 charged EGP 200.00 at TEST CAFE, available USD 50.00');
+    await processOne.execute(USER, 'm1');
+    expect(inbox.saved).toHaveLength(1);
+    expect(balances.recorded).toEqual([]);
+  });
+
+  it('leaves the balance to the run that won the message', async () => {
+    inbox.add('m1', 'card 1234 charged EGP 200.00 at TEST CAFE, available EGP 100.00');
+    inbox.loseNextRace = true;
+    await processOne.execute(USER, 'm1');
+    expect(balances.recorded).toEqual([]);
+  });
+
   it("treats another user's message as not found", async () => {
     inbox.add('m1', 'card 1234 charged EGP 10.00 at KIOSK', { userId: STRANGER });
     await expect(processOne.execute(USER, 'm1')).rejects.toBeInstanceOf(NotFoundError);
@@ -419,6 +465,7 @@ describe('transfer pairing', () => {
       categoryRepo,
       { findCategoryId: async () => null },
       { getSpendingPolicy: async () => DEFAULT_SPENDING_POLICY },
+      new FakeBalances(),
       clock,
     );
     pairing = new TransferPairing(inbox, accountRepo, clock);

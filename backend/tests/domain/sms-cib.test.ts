@@ -34,6 +34,8 @@ describe('CIB SMS parsing', () => {
           amount: '3150.00',
           merchant: 'TEST ONLINE SHO',
           last4: '1111',
+          availableAmount: '10000.00',
+          availableCurrency: 'EGP',
         },
       });
     });
@@ -52,6 +54,8 @@ describe('CIB SMS parsing', () => {
           amount: '21.60',
           merchant: 'TEST SOFTWARE PL',
           last4: '1111',
+          availableAmount: null,
+          availableCurrency: null,
         },
       });
     });
@@ -70,6 +74,8 @@ describe('CIB SMS parsing', () => {
           amount: '5.00',
           merchant: 'Uber',
           last4: '4444',
+          availableAmount: '1000.00',
+          availableCurrency: 'EGP',
         },
       });
     });
@@ -88,6 +94,8 @@ describe('CIB SMS parsing', () => {
           amount: '5.00',
           merchant: 'Uber',
           last4: '4444',
+          availableAmount: '1005.00',
+          availableCurrency: 'EGP',
         },
       });
     });
@@ -106,6 +114,8 @@ describe('CIB SMS parsing', () => {
           amount: '1000.00',
           merchant: 'TEST ATM101',
           last4: '4444',
+          availableAmount: '500.00',
+          availableCurrency: 'EGP',
         },
       });
     });
@@ -124,6 +134,8 @@ describe('CIB SMS parsing', () => {
           amount: '800.00',
           merchant: 'TEST FRIEND NAME',
           last4: '2222',
+          availableAmount: null,
+          availableCurrency: null,
         },
       });
     });
@@ -142,6 +154,8 @@ describe('CIB SMS parsing', () => {
           amount: '150.00',
           merchant: 'InstaPay transfer',
           last4: '2222',
+          availableAmount: null,
+          availableCurrency: null,
         },
       });
     });
@@ -170,6 +184,8 @@ describe('CIB SMS parsing', () => {
           amount: '1200.00',
           merchant: 'Transfer to another account',
           last4: '2222',
+          availableAmount: null,
+          availableCurrency: null,
         },
       });
     });
@@ -188,6 +204,8 @@ describe('CIB SMS parsing', () => {
           amount: '1200.00',
           merchant: 'Credit card payment',
           last4: '1111',
+          availableAmount: null,
+          availableCurrency: null,
         },
       });
     });
@@ -206,6 +224,74 @@ describe('CIB SMS parsing', () => {
       expect(parseWithTemplates(BANK_CATALOG, 'CIB', payment)).toMatchObject({
         outcome: 'transaction',
         parsed: { event: 'card-payment', amount: '1200.00', last4: '1111' },
+      });
+    });
+  });
+
+  describe('Money coming in', () => {
+    it('S11: instant transfer IN from a named person is a deposit from them', () => {
+      const msg = 'يرجى العلم انه تم تنفيذ تحويل لحظي بمبلغ 2,500.00 جم إلى حسابك المنتهي بـ ********2222 من SARA HASSAN TEST برقم مرجعي c9d0e1f2 بتاريخ 2026-09-12 18:47 للمزيد، برجاء الاتصال بـ 19666';
+      expect(parseWithTemplates(BANK_CATALOG, 'CIB', msg)).toEqual({
+        outcome: 'transaction',
+        templateId: 'cib.instant-transfer-in.ar.v1',
+        parsed: {
+          bank: 'CIB',
+          event: 'deposit',
+          currency: 'EGP',
+          amount: '2500.00',
+          merchant: 'SARA HASSAN TEST',
+          last4: '2222',
+          availableAmount: null,
+          availableCurrency: null,
+        },
+      });
+    });
+
+    it('S11 with an Arabic sender name and the "الى" spelling', () => {
+      const msg = 'يرجى العلم إنه تم تنفيذ تحويل لحظي بمبلغ 300.00 جم الى حسابك المنتهي ب 2222 من سارة حسن برقم مرجعي c9d0e1f2 بتاريخ 2026-09-12 18:47';
+      expect(parseWithTemplates(BANK_CATALOG, 'CIB', msg)).toMatchObject({
+        templateId: 'cib.instant-transfer-in.ar.v1',
+        parsed: { event: 'deposit', amount: '300.00', merchant: 'سارة حسن', last4: '2222' },
+      });
+    });
+
+    it('does not mistake an outgoing named transfer for an incoming one', () => {
+      const msg = 'يرجى العلم انه تم تنفيذ تحويل لحظي بمبلغ 800.00 جم إلى TEST FRIEND NAME من حسابك المنتهي بـ ********2222 برقم مرجعي a1b2c3d4 بتاريخ 2026-09-11 14:16';
+      expect(parseWithTemplates(BANK_CATALOG, 'CIB', msg)).toMatchObject({
+        templateId: 'cib.instant-transfer-named.ar.v1',
+        parsed: { event: 'purchase' },
+      });
+    });
+  });
+
+  describe('Available balance', () => {
+    it('reads a zero balance: 0.00 is a real balance', () => {
+      const msg = 'تم خصم مبلغ EGP 5.00 من بطاقة الخصم المباشر المنتهية بـ **4444 عند Uber في 03/08/26 14:05 ، الرصيد المتاح EGP 0.00';
+      expect(parseWithTemplates(BANK_CATALOG, 'CIB', msg)).toMatchObject({
+        parsed: { amount: '5.00', availableAmount: '0.00', availableCurrency: 'EGP' },
+      });
+    });
+
+    it('reads a grouped balance written in Arabic-Indic digits', () => {
+      const msg = toArabicDigits('تم سحب مبلغ EGP 400.00 من بطاقة الخصم المباشر المنتهية بـ **4444 من TESTBANK ATM في 31/08/26 03:56 ، الرصيد المتاح EGP 19,381.88');
+      expect(parseWithTemplates(BANK_CATALOG, 'CIB', msg)).toMatchObject({
+        parsed: { amount: '400.00', availableAmount: '19381.88', availableCurrency: 'EGP' },
+      });
+    });
+
+    it('still parses the purchase when the SMS states no balance', () => {
+      const msg = 'تم خصم مبلغ EGP 5.00 من بطاقة الخصم المباشر المنتهية بـ **4444 عند Uber في 03/08/26 14:05';
+      expect(parseWithTemplates(BANK_CATALOG, 'CIB', msg)).toMatchObject({
+        outcome: 'transaction',
+        parsed: { amount: '5.00', availableAmount: null, availableCurrency: null },
+      });
+    });
+
+    it('drops an unreadable balance but keeps the purchase', () => {
+      const msg = 'تم خصم مبلغ EGP 5.00 من بطاقة الخصم المباشر المنتهية بـ **4444 عند Uber في 03/08/26 14:05 ، الرصيد المتاح XYZ 1000.00';
+      expect(parseWithTemplates(BANK_CATALOG, 'CIB', msg)).toMatchObject({
+        outcome: 'transaction',
+        parsed: { amount: '5.00', availableAmount: null, availableCurrency: null },
       });
     });
   });

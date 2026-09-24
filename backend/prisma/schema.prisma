@@ -211,6 +211,7 @@ model Account {
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   creditCard    CreditCardDetails?
+  available     AccountAvailableBalance?
   transactions  Transaction[]
   subscriptions Subscription[]
 
@@ -236,6 +237,24 @@ model CreditCardDetails {
   apr Decimal? @db.Decimal(7, 4)
 
   @@map("credit_card_details")
+}
+
+/// What the bank last SAID is still available on an account: the balance
+/// of a debit account, the remaining limit of a credit card. Read from the
+/// end of transaction SMS. One row per account; a newer report replaces an
+/// older one, never the other way round. In the account's own currency.
+///
+/// A report, not a ledger: the app never adds transactions to it.
+model AccountAvailableBalance {
+  accountId String  @id @map("account_id") @db.Uuid
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  amount     Decimal  @db.Decimal(18, 2)
+  /// When the bank reported it (the SMS time), not when we stored it.
+  reportedAt DateTime @map("reported_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("account_available_balances")
 }
 
 // ---------------------------------------------------------------------
