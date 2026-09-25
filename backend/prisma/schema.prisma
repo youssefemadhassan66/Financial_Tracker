@@ -67,6 +67,9 @@ enum RawMessageStatus {
   ignored
   /// Half of an internal transfer, waiting for its other half.
   awaiting_pair
+  /// A charge in another currency on a card: its billed amount is only
+  /// known once the card statement is imported.
+  awaiting_statement
 }
 
 enum CategoryKind {
@@ -404,8 +407,15 @@ model Transaction {
   accountId String  @map("account_id") @db.Uuid
   account   Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
-  amount    Decimal              @db.Decimal(18, 2)
-  currency  Currency
+  amount   Decimal  @db.Decimal(18, 2)
+  currency Currency
+
+  /// What the merchant charged when that was another currency (USD 21.60
+  /// billed as EGP 1,036.44). Both set or both null; `amount` stays the
+  /// billed figure. CHECKs in the migration.
+  originalAmount   Decimal?  @map("original_amount") @db.Decimal(18, 2)
+  originalCurrency Currency? @map("original_currency")
+
   direction TransactionDirection
 
   /// WHAT HAPPENED — an immutable fact.

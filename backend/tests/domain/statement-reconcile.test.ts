@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { calendarDate } from '../../src/domain/calendar-date.js';
-import { kindOfNewLine, reconcile, type LinkCandidate } from '../../src/domain/statements/reconcile.js';
+import {
+  kindOfNewLine,
+  priceForeignCharges,
+  reconcile,
+  type ForeignCharge,
+  type LineDecision,
+  type LinkCandidate,
+} from '../../src/domain/statements/reconcile.js';
 import type { StatementLine } from '../../src/domain/statements/card-statement.js';
 
 const line = (date: string, amount: string, description = 'TEST CAFE', direction: 'debit' | 'credit' = 'debit'): StatementLine => ({
@@ -10,6 +17,7 @@ const line = (date: string, amount: string, description = 'TEST CAFE', direction
   amount,
   direction,
   notes: [],
+  original: null,
 });
 
 const tx = (id: string, date: string, amount: string, extra: Partial<LinkCandidate> = {}): LinkCandidate => ({
@@ -69,6 +77,49 @@ describe('reconcile', () => {
   it('never lets an ordinary line confirm a transfer', () => {
     const transfer = tx('t', '2026-07-07', '50.00', { direction: 'credit', kind: 'transfer' });
     expect(reconcile([line('2026-07-07', '50.00', 'Reverse Annual fee', 'credit')], [transfer])).toEqual([{ kind: 'create' }]);
+  });
+});
+
+describe('priceForeignCharges', () => {
+  const usdLine = (date: string, egp: string, usd: string, direction: 'debit' | 'credit' = 'debit'): StatementLine => ({
+    ...line(date, egp, 'TEST SOFTWARE', direction),
+    original: { amount: usd, currency: 'USD' },
+  });
+  const sms = (id: string, date: string, usd: string, extra: Partial<ForeignCharge> = {}): ForeignCharge => ({
+    rawMessageId: id,
+    amount: usd,
+    currency: 'USD',
+    direction: 'debit',
+    date: calendarDate(date),
+    ...extra,
+  });
+  const create: LineDecision = { kind: 'create' };
+
+  it('prices the waiting SMS with the same dollars a few days before the booking', () => {
+    expect(priceForeignCharges([usdLine('2026-08-06', '1036.44', '21.60')], [create], [sms('m', '2026-08-04', '21.60')])).toEqual([
+      { kind: 'price-sms', rawMessageId: 'm' },
+    ]);
+  });
+
+  it('leaves the line to be created when the dollars, the direction or the dates differ', () => {
+    const lines = [usdLine('2026-08-06', '1036.44', '21.60'), usdLine('2026-08-06', '100.00', '2.00', 'credit'), usdLine('2026-08-20', '50.00', '1.00')];
+    const charges = [sms('a', '2026-08-06', '22.81'), sms('b', '2026-08-06', '2.00'), sms('c', '2026-08-10', '1.00')];
+    expect(priceForeignCharges(lines, [create, create, create], charges)).toEqual([create, create, create]);
+  });
+
+  it('only prices lines that are still to be created, each SMS once, the closest first', () => {
+    const lines = [usdLine('2026-08-06', '1036.44', '21.60'), usdLine('2026-08-06', '1036.44', '21.60'), usdLine('2026-08-06', '1036.44', '21.60')];
+    const confirmed: LineDecision = { kind: 'link', transactionId: 't' };
+    const charges = [sms('far', '2026-08-03', '21.60'), sms('near', '2026-08-06', '21.60')];
+    expect(priceForeignCharges(lines, [confirmed, create, create], charges)).toEqual([
+      confirmed,
+      { kind: 'price-sms', rawMessageId: 'near' },
+      { kind: 'price-sms', rawMessageId: 'far' },
+    ]);
+  });
+
+  it('never prices a line with no foreign amount', () => {
+    expect(priceForeignCharges([line('2026-08-06', '21.60')], [create], [sms('m', '2026-08-06', '21.60')])).toEqual([create]);
   });
 });
 

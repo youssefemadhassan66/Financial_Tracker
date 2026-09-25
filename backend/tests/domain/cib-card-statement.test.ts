@@ -82,7 +82,7 @@ describe('parseCibCardStatements', () => {
       openingBalance: '1000.00',
       closingBalance: '1200.00',
       lines: [
-        { transactionDate: '2026-06-30', postingDate: '2026-07-02', description: 'TEST CAFE CAIRO', amount: '450.00', direction: 'debit', notes: [] },
+        { transactionDate: '2026-06-30', postingDate: '2026-07-02', description: 'TEST CAFE CAIRO', amount: '450.00', direction: 'debit', notes: [], original: null },
         {
           transactionDate: '2026-07-05',
           postingDate: '2026-07-06',
@@ -91,8 +91,9 @@ describe('parseCibCardStatements', () => {
           amount: '25.00',
           direction: 'debit',
           notes: ['USD1,00'],
+          original: { amount: '1.00', currency: 'USD' },
         },
-        { transactionDate: '2026-07-07', postingDate: '2026-07-07', description: 'PAYMENT RECEIVED INTERNET', amount: '275.00', direction: 'credit', notes: [] },
+        { transactionDate: '2026-07-07', postingDate: '2026-07-07', description: 'PAYMENT RECEIVED INTERNET', amount: '275.00', direction: 'credit', notes: [], original: null },
       ],
     });
   });
@@ -226,6 +227,25 @@ describe('parseCibCardStatements', () => {
       ...balance(540, 'CLOSING', '10.00'),
     ];
     expect(() => parseCibCardStatements([page])).toThrow(/2026-07 statement: an amount with no date \("TEST CAFE 100.00"\)/);
+  });
+
+  it.each([
+    ['USD21,60', { amount: '21.60', currency: 'USD' }],
+    ['USD1.234,56', { amount: '1234.56', currency: 'USD' }],
+    ['USD 9,99', { amount: '9.99', currency: 'USD' }],
+    ['EUR5,00', null], // a currency this app does not know
+    ['EGP5,00', null], // not foreign at all
+    ['USD0,00', null],
+    ['REF 12345', null],
+  ])('reads the note %s as the original amount %j', (note, original) => {
+    const page = [
+      ...summary({ total: '10.00' }),
+      ...balance(480, 'OPENING', '.00'),
+      ...line(493, '01-07', '01-07', 'TEST SOFTWARE', '10.00'),
+      ...line(506, '00-00', '00-00', note, '.00'),
+      ...balance(530, 'CLOSING', '10.00'),
+    ];
+    expect(parseCibCardStatements([page])[0]!.lines[0]).toMatchObject({ notes: [note], original });
   });
 
   it('finds no statement in a PDF that is not one', () => {

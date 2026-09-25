@@ -1,5 +1,6 @@
 import { Decimal } from 'decimal.js';
 import { calendarDate, type CalendarDate } from '../calendar-date.js';
+import { isCurrency } from '../currency.js';
 import { DomainError } from '../errors.js';
 import type { CardStatement, PdfPages, PdfTextRun, StatementLine } from './card-statement.js';
 
@@ -28,6 +29,8 @@ const SUMMARY_LABEL_END = 170;
 const SAME_ROW = 3;
 
 const DAY_MONTH = /^(\d{2})-(\d{2})$/;
+/** "USD21,60": a comma before the cents, optional dots between thousands. */
+const FOREIGN_NOTE = /^([A-Z]{3})\s?(\d{1,3}(?:\.\d{3})+|\d+),(\d{2})$/;
 /** "1,040.83", "99.99", ".83" (the bank drops a leading zero), optional " CR". */
 const TABLE_AMOUNT = /^(\d{1,3}(?:,\d{3})+|\d*)\.(\d{2})(?:\s*CR)?$/;
 /** Summary figures may have no decimals: a limit of "25000". */
@@ -186,6 +189,7 @@ function readTableRow(row: Row, table: Table): void {
     // A note about the line above, e.g. the original dollar amount.
     if (previous === undefined) throw rowError(summary, 'a note row comes before any line', description);
     previous.notes.push(description);
+    previous.original ??= foreignAmountOf(description);
     return;
   }
 
@@ -229,7 +233,21 @@ function readTableRow(row: Row, table: Table): void {
     amount: value.toFixed(2),
     direction: credit ? 'credit' : 'debit',
     notes: [],
+    original: null,
   });
+}
+
+/**
+ * "USD21,60" -> USD 21.60. Null for any other note, and for a currency
+ * this app does not know: the line is still recorded, in EGP as billed.
+ */
+function foreignAmountOf(note: string): StatementLine['original'] {
+  const match = FOREIGN_NOTE.exec(note);
+  if (match === null || !isCurrency(match[1]!) || match[1] === 'EGP') {
+    return null;
+  }
+  const amount = new Decimal(`${match[2]!.replace(/\./g, '')}.${match[3]!}`);
+  return amount.isZero() ? null : { amount: amount.toFixed(2), currency: match[1] };
 }
 
 function readTableAmount(text: string, summary: Summary): { value: Decimal; credit: boolean } {

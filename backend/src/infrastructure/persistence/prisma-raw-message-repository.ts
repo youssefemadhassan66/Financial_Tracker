@@ -19,9 +19,9 @@ import { isUniqueViolation } from './prisma-errors.js';
 import { toTransactionRow } from './prisma-finance-repositories.js';
 
 /** Every status except 'parsed': the messages a reprocess may touch. */
-const NEEDS_PARSE: RawMessageStatus[] = ['pending', 'unparsed', 'ignored', 'awaiting_pair'];
+const NEEDS_PARSE: RawMessageStatus[] = ['pending', 'unparsed', 'ignored', 'awaiting_pair', 'awaiting_statement'];
 
-const RECORD_FIELDS = {
+export const RECORD_FIELDS = {
   id: true, userId: true, sender: true, body: true, receivedAt: true, status: true, parsedPayload: true,
 } as const;
 
@@ -58,7 +58,7 @@ function toPayload(json: Prisma.JsonValue): ParsePayload | null {
   return out;
 }
 
-function toRecord<T extends { userId: string; parsedPayload: Prisma.JsonValue }>(row: T) {
+export function toRecord<T extends { userId: string; parsedPayload: Prisma.JsonValue }>(row: T) {
   return { ...row, userId: newUserId(row.userId), parsedPayload: toPayload(row.parsedPayload) };
 }
 
@@ -134,7 +134,7 @@ export class PrismaRawMessageRepository implements RawMessageRepository, SmsInbo
   async markNotTransaction(
     id: string,
     userId: UserId,
-    status: 'ignored' | 'unparsed' | 'awaiting_pair',
+    status: 'ignored' | 'unparsed' | 'awaiting_pair' | 'awaiting_statement',
     reason: string,
     payload: ParsePayload | null,
   ): Promise<boolean> {

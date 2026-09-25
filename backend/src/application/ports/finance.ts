@@ -87,6 +87,8 @@ export interface TransactionView {
   occurredAt: Date;
   source: TransactionSource;
   transferGroupId: string | null;
+  /** What the merchant charged, when that was another currency. */
+  original: { amount: string; currency: Currency } | null;
 }
 
 export interface TransactionRepository {

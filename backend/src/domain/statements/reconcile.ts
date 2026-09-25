@@ -1,4 +1,5 @@
 import { daysBetween, type CalendarDate } from '../calendar-date.js';
+import type { Currency } from '../currency.js';
 import type { TransactionKind } from '../transaction-kind.js';
 import type { StatementLine } from './card-statement.js';
 
@@ -23,7 +24,23 @@ export type LineDecision =
    * transfer (money came from some account), so it is never recorded
    * alone: it would look like income. It waits for you.
    */
-  | { kind: 'unmatched-payment' };
+  | { kind: 'unmatched-payment' }
+  /**
+   * The line is the billed amount of a foreign-currency charge whose SMS
+   * is waiting for it: record it once, from both.
+   */
+  | { kind: 'price-sms'; rawMessageId: string };
+
+/** A card charge in another currency, known from its SMS, not yet priced. */
+export interface ForeignCharge {
+  rawMessageId: string;
+  /** Decimal string, in `currency`. */
+  amount: string;
+  currency: Currency;
+  direction: 'debit' | 'credit';
+  /** Local (Cairo) date the SMS arrived. */
+  date: CalendarDate;
+}
 
 /** How far a statement date may be from the SMS date: the bank books late. */
 export const MATCH_WINDOW_DAYS = 3;
@@ -64,6 +81,43 @@ export function reconcile(lines: readonly StatementLine[], candidates: readonly 
       return { kind: 'link', transactionId: best.id };
     }
     return payment ? { kind: 'unmatched-payment' } : { kind: 'create' };
+  });
+}
+
+/**
+ * Gives the lines that are still to be created, and carry a foreign
+ * amount ("USD21,60"), the waiting SMS of that same charge: the same
+ * foreign amount and currency, the same direction, within
+ * MATCH_WINDOW_DAYS. Closest date first, each SMS at most once; every
+ * other decision is kept as it was.
+ */
+export function priceForeignCharges(
+  lines: readonly StatementLine[],
+  decisions: readonly LineDecision[],
+  charges: readonly ForeignCharge[],
+): LineDecision[] {
+  const used = new Set<string>();
+  return decisions.map((decision, i) => {
+    const line = lines[i]!;
+    const original = line.original;
+    if (decision.kind !== 'create' || original === null) {
+      return decision;
+    }
+    let best: { id: string; distance: number } | null = null;
+    for (const c of charges) {
+      if (used.has(c.rawMessageId) || c.currency !== original.currency || c.amount !== original.amount) continue;
+      if (c.direction !== line.direction) continue;
+      const distance = Math.abs(daysBetween(line.transactionDate, c.date));
+      if (distance > MATCH_WINDOW_DAYS) continue;
+      if (best === null || distance < best.distance || (distance === best.distance && c.rawMessageId < best.id)) {
+        best = { id: c.rawMessageId, distance };
+      }
+    }
+    if (best === null) {
+      return decision;
+    }
+    used.add(best.id);
+    return { kind: 'price-sms', rawMessageId: best.id };
   });
 }
 

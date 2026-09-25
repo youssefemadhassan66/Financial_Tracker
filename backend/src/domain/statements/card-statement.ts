@@ -1,4 +1,5 @@
 import type { CalendarDate } from '../calendar-date.js';
+import type { Currency } from '../currency.js';
 
 /**
  * One piece of text on a PDF page, as the PDF reader found it. The
@@ -30,6 +31,8 @@ export interface StatementLine {
   direction: 'debit' | 'credit';
   /** Extra rows the bank printed under this line, e.g. the original "USD21,60". */
   notes: string[];
+  /** The foreign amount a note gives, when the charge was in another currency. */
+  original: { amount: string; currency: Currency } | null;
 }
 
 /** One monthly credit card statement, as the bank printed it. */
