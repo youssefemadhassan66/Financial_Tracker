@@ -59,6 +59,8 @@ export interface SmsInbox {
   /**
    * Records why a message did not become a transaction. False when a
    * faster run already turned it into one, so nothing was changed.
+   * Parking as 'awaiting_pair' waits for any pairing of the same user
+   * in progress (see completeTransferPair).
    */
   markNotTransaction(
     id: string,
@@ -89,8 +91,26 @@ export interface SmsInbox {
    * Turns two waiting halves into one transfer, atomically: BOTH messages
    * are claimed and BOTH transactions inserted, or nothing changes.
    * 'already-processed' when either half was taken by another run.
+   *
+   * Runs one at a time per user, together with parking a half as
+   * awaiting_pair. Inside that, it re-reads the halves waiting in `check`
+   * and returns 'ambiguous' (changing nothing) when `hasRival` finds a
+   * third half that could belong to this transfer — one parked after the
+   * caller searched.
    */
-  completeTransferPair(userId: UserId, legs: readonly [TransferPairLeg, TransferPairLeg]): Promise<'saved' | 'already-processed'>;
+  completeTransferPair(
+    userId: UserId,
+    legs: readonly [TransferPairLeg, TransferPairLeg],
+    check: RivalCheck,
+  ): Promise<'saved' | 'already-processed' | 'ambiguous'>;
+}
+
+/** The last look for a rival half, made inside the pairing's transaction. */
+export interface RivalCheck {
+  from: Date;
+  to: Date;
+  /** Given the OTHER halves still waiting in [from, to]. */
+  hasRival(waiting: RawMessageRecord[]): boolean;
 }
 
 export interface TransferPairLeg {

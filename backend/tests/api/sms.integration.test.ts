@@ -286,6 +286,44 @@ suite('credit card payment = one internal transfer', () => {
     }
   });
 
+  it('never pairs on a stale search when a second debit races the payment', async () => {
+    // One debit waiting; a second identical debit and the payment arrive
+    // together. Either the payment pairs with the first debit and the
+    // second waits normally (it came later), or all three wait as
+    // ambiguous. Never a pair next to a debit told "several matches"
+    // whose partner is already gone. (Timing-dependent: a smoke test.)
+    for (let round = 0; round < 5; round++) {
+      const amount = `${400 + round}.00`;
+      const store = (body: string) =>
+        container.storeRawSms.execute(userId as never, deviceId, { sender: 'CIB', body, receivedAt: new Date(Date.now() - 60_000) });
+      const a1 = await store(debitSms(amount));
+      await container.processRawSms.execute(userId as never, a1.id);
+      const a2 = await store(debitSms(amount).replace('07 SEP', '08 SEP'));
+      const b = await store(paymentSms(amount));
+
+      await Promise.all([
+        container.processRawSms.execute(userId as never, a2.id),
+        container.processRawSms.execute(userId as never, b.id),
+      ]);
+
+      const rows = await prisma.rawMessage.findMany({
+        where: { id: { in: [a1.id, a2.id, b.id] } },
+        select: { id: true, status: true, parseError: true },
+      });
+      const paired = rows.filter((r) => r.status === 'parsed');
+      if (paired.length > 0) {
+        expect(paired.map((r) => r.id).sort(), `round ${round}`).toEqual([a1.id, b.id].sort());
+        expect(rows.find((r) => r.id === a2.id)?.parseError, `round ${round}`).toBe('Waiting for the matching credit card payment SMS');
+      } else {
+        expect(rows.map((r) => r.status), `round ${round}`).toEqual(['awaiting_pair', 'awaiting_pair', 'awaiting_pair']);
+      }
+      // Leave no halves waiting for the tests below to trip over.
+      const ids = [a1.id, a2.id, b.id];
+      await prisma.transaction.deleteMany({ where: { rawMessageId: { in: ids } } });
+      await prisma.rawMessage.deleteMany({ where: { id: { in: ids } } });
+    }
+  });
+
   it('lets the user pair manually when two debits could match', async () => {
     const a1 = await me.sms(debitSms('777.00'), 30, 'CIB');
     const a2 = await me.sms(debitSms('777.00').replace('07 SEP', '08 SEP'), 20, 'CIB');
@@ -327,8 +365,72 @@ suite('credit card payment = one internal transfer', () => {
       };
     });
 
-    const result = await new PrismaRawMessageRepository(prisma).completeTransferPair(userId as never, [legs[0]!, legs[1]!]);
+    const result = await new PrismaRawMessageRepository(prisma).completeTransferPair(userId as never, [legs[0]!, legs[1]!], {
+      from: new Date(0),
+      to: new Date(0),
+      hasRival: () => false,
+    });
     expect(result).toBe('already-processed');
+    const statuses = await prisma.rawMessage.findMany({ where: { id: { in: [a.body.id, b.body.id] } }, select: { status: true } });
+    expect(statuses.map((r) => r.status)).toEqual(['awaiting_pair', 'awaiting_pair']);
+  });
+
+  it('makes parking a transfer half wait while a pairing of the same user is in progress', async () => {
+    const a = await me.sms(debitSms('925.00'), 5, 'CIB');
+    const repo = new PrismaRawMessageRepository(prisma);
+    const payload = (await prisma.rawMessage.findUniqueOrThrow({ where: { id: a.body.id } })).parsedPayload as ParsePayload;
+
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let locked!: () => void;
+    const lockTaken = new Promise<void>((resolve) => (locked = resolve));
+    // Stands in for a pairing mid-transaction: the same row lock it takes.
+    const pairing = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+      locked();
+      await held;
+    });
+    await lockTaken;
+
+    let parkedAt = 0;
+    const park = repo
+      .markNotTransaction(a.body.id, userId as never, 'awaiting_pair', 'test', payload)
+      .then(() => (parkedAt = Date.now()));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(parkedAt).toBe(0); // still waiting on the lock
+
+    const releasedAt = Date.now();
+    release();
+    await Promise.all([pairing, park]);
+    expect(parkedAt).toBeGreaterThanOrEqual(releasedAt);
+  });
+
+  it('re-reads the other waiting halves inside the pairing and backs out on a rival', async () => {
+    // Different amounts, so all three stay waiting.
+    const a = await me.sms(debitSms('915.00'), 5, 'CIB');
+    const b = await me.sms(paymentSms('916.00'), 4, 'CIB');
+    const c = await me.sms(debitSms('917.00'), 3, 'CIB');
+    const rows = await prisma.rawMessage.findMany({
+      where: { id: { in: [a.body.id, b.body.id] } },
+      select: { id: true, parsedPayload: true },
+    });
+    const legs = rows.map((r) => ({ messageId: r.id, transaction: null as never, payload: r.parsedPayload as ParsePayload }));
+    let seen: string[] = [];
+
+    const result = await new PrismaRawMessageRepository(prisma).completeTransferPair(userId as never, [legs[0]!, legs[1]!], {
+      from: new Date(Date.now() - 60 * 60_000),
+      to: new Date(),
+      hasRival: (waiting) => {
+        seen = waiting.map((w) => w.id);
+        return seen.includes(c.body.id);
+      },
+    });
+    expect(result).toBe('ambiguous');
+    // It saw the third half, and not the two it had just claimed.
+    expect(seen).toContain(c.body.id);
+    expect(seen).not.toContain(a.body.id);
+    expect(seen).not.toContain(b.body.id);
+    // Rolled back: the claims are undone.
     const statuses = await prisma.rawMessage.findMany({ where: { id: { in: [a.body.id, b.body.id] } }, select: { status: true } });
     expect(statuses.map((r) => r.status)).toEqual(['awaiting_pair', 'awaiting_pair']);
   });

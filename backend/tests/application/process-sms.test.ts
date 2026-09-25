@@ -15,6 +15,7 @@ import type {
   RawMessageRecord,
   RawMessageStatus,
   RawMessageView,
+  RivalCheck,
   SmsInbox,
   TransferPairLeg,
 } from '../../src/application/ports/sms.js';
@@ -77,6 +78,8 @@ class FakeInbox implements SmsInbox {
   loseNextRace = false;
   /** Ids another run turns into a transaction just before this run parks them. */
   readonly parkedElsewhere = new Set<string>();
+  /** Runs once, between a pairing's search and its claim. */
+  beforeNextClaim: (() => Promise<void>) | null = null;
 
   add(id: string, body: string, options: { userId?: UserId; sender?: string; receivedAt?: Date } = {}): void {
     this.rows.set(id, {
@@ -133,11 +136,19 @@ class FakeInbox implements SmsInbox {
     );
   }
 
-  async completeTransferPair(userId: UserId, legs: readonly [TransferPairLeg, TransferPairLeg]) {
+  async completeTransferPair(userId: UserId, legs: readonly [TransferPairLeg, TransferPairLeg], check: RivalCheck) {
+    const hook = this.beforeNextClaim;
+    this.beforeNextClaim = null;
+    await hook?.();
     const rows = legs.map((leg) => this.rows.get(leg.messageId));
     if (this.loseNextRace || rows.some((r) => r === undefined || r.userId !== userId || r.status !== 'awaiting_pair')) {
       this.loseNextRace = false;
       return 'already-processed' as const;
+    }
+    const ids = new Set(legs.map((leg) => leg.messageId));
+    const others = (await this.listAwaitingPair(userId, check.from, check.to)).filter((r) => !ids.has(r.id));
+    if (check.hasRival(others)) {
+      return 'ambiguous' as const;
     }
     legs.forEach((leg, i) => {
       Object.assign(rows[i]!, { status: 'parsed' as RawMessageStatus, reason: null, payload: leg.payload, parsedPayload: leg.payload });
@@ -563,6 +574,24 @@ describe('transfer pairing', () => {
     expect(inbox.rows.get('a1')?.status).toBe('awaiting_pair');
     expect(await processOne.execute(USER, 'a2')).toMatchObject({ status: 'awaiting_pair' });
     expect(inbox.saved).toEqual([]);
+  });
+
+  it('does not pair when a second identical debit is parked between the search and the claim', async () => {
+    inbox.add('a1', debitSms(), { sender: 'CIB', receivedAt: minutesAgo(30) });
+    inbox.add('a2', debitSms().replace('07 SEP', '08 SEP'), { sender: 'CIB', receivedAt: minutesAgo(20) });
+    inbox.add('b', paymentSms(), { sender: 'CIB', receivedAt: minutesAgo(10) });
+    await processOne.execute(USER, 'a1');
+    // The payment finds only a1, then a2 is parked by another run just
+    // before the payment claims the pair.
+    inbox.beforeNextClaim = async () => {
+      await processOne.execute(USER, 'a2');
+    };
+    expect(await processOne.execute(USER, 'b')).toEqual({
+      status: 'awaiting_pair',
+      reason: 'Several possible matches; pair this transfer manually',
+    });
+    expect(inbox.saved).toEqual([]);
+    expect(['a1', 'a2', 'b'].map((id) => inbox.rows.get(id)?.status)).toEqual(['awaiting_pair', 'awaiting_pair', 'awaiting_pair']);
   });
 
   it('keeps a card payment that points at a bank account as unparsed', async () => {

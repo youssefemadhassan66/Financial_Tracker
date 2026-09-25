@@ -10,7 +10,7 @@ import { Transaction, type TransactionDirection } from '../../domain/transaction
 import { ConflictError, NotFoundError } from '../errors.js';
 import type { Clock } from '../ports/clock.js';
 import type { AccountRepository } from '../ports/finance.js';
-import type { ParsePayload, RawMessageRecord, SmsInbox } from '../ports/sms.js';
+import type { ParsePayload, RawMessageRecord, RivalCheck, SmsInbox } from '../ports/sms.js';
 
 /**
  * How far apart the two SMS of one transfer may arrive. They normally
@@ -72,6 +72,11 @@ export class TransferPairing {
    * each other, both try to pair; completeTransferPair claims both rows
    * in one transaction, so exactly one wins and the other gets
    * 'already-processed'.
+   *
+   * A third half parked between our search and our claim (two identical
+   * debits and one payment, arriving together) is caught by the claim
+   * itself: parking and pairing run one at a time per user, and the
+   * claim looks for rivals again before it commits.
    */
   async offerLeg(
     userId: UserId,
@@ -103,9 +108,13 @@ export class TransferPairing {
       return { status: 'awaiting_pair', reason: AMBIGUOUS_REASON };
     }
 
-    const result = await this.pair(userId, leg, partner);
+    const result = await this.pair(userId, leg, partner, rivalCheck(leg, partner));
     if (result === 'already-processed') {
       return { status: 'already-processed' };
+    }
+    if (result === 'ambiguous') {
+      await this.inbox.markNotTransaction(message.id, userId, 'awaiting_pair', AMBIGUOUS_REASON, payload);
+      return { status: 'awaiting_pair', reason: AMBIGUOUS_REASON };
     }
     return { status: 'parsed', transactionId: result.transactionIds[leg.messageId]!, pairedMessageId: partner.messageId };
   }
@@ -126,8 +135,9 @@ export class TransferPairing {
         `The amounts differ (${debit.amount.toString()} vs ${payment.amount.toString()}); these are not one transfer`,
       );
     }
-    const result = await this.pair(userId, debit, payment);
-    if (result === 'already-processed') {
+    // Your decision: other identical halves waiting do not stop it.
+    const result = await this.pair(userId, debit, payment, NO_RIVAL_CHECK);
+    if (result === 'already-processed' || result === 'ambiguous') {
       throw new ConflictError('One of these messages was already turned into a transaction');
     }
     return { transferGroupId: result.transferGroupId, transactionIds: Object.values(result.transactionIds) };
@@ -150,22 +160,15 @@ export class TransferPairing {
     const from = new Date(leg.receivedAt.getTime() - PAIR_WINDOW_MS);
     const to = new Date(leg.receivedAt.getTime() + PAIR_WINDOW_MS);
     const waiting = await this.inbox.listAwaitingPair(userId, from, to);
-    return waiting
-      .map(legOf)
-      .filter((other): other is Leg =>
-        other !== null &&
-        other.messageId !== leg.messageId &&
-        other.event === OPPOSITE[leg.event] &&
-        other.accountId !== leg.accountId &&
-        sameAmount(other.amount, leg.amount),
-      );
+    return waiting.map(legOf).filter((other): other is Leg => other !== null && canPair(leg, other));
   }
 
   private async pair(
     userId: UserId,
     a: Leg,
     b: Leg,
-  ): Promise<{ transferGroupId: string; transactionIds: Record<string, string> } | 'already-processed'> {
+    check: RivalCheck,
+  ): Promise<{ transferGroupId: string; transactionIds: Record<string, string> } | 'already-processed' | 'ambiguous'> {
     const debit = a.event === 'transfer-out' ? a : b;
     const payment = debit === a ? b : a;
 
@@ -204,9 +207,9 @@ export class TransferPairing {
     const saved = await this.inbox.completeTransferPair(userId, [
       { messageId: debit.messageId, transaction: debitTx, payload: debit.payload },
       { messageId: payment.messageId, transaction: paymentTx, payload: payment.payload },
-    ]);
-    if (saved === 'already-processed') {
-      return 'already-processed';
+    ], check);
+    if (saved !== 'saved') {
+      return saved;
     }
     return {
       transferGroupId: groupId,
@@ -248,6 +251,42 @@ function legOf(message: RawMessageRecord): Leg | null {
     payload: p,
   };
 }
+
+/** Could `other` be the other half of the transfer `leg` belongs to? */
+function canPair(leg: Leg, other: Leg): boolean {
+  return (
+    other.messageId !== leg.messageId &&
+    other.event === OPPOSITE[leg.event] &&
+    other.accountId !== leg.accountId &&
+    sameAmount(other.amount, leg.amount)
+  );
+}
+
+/**
+ * Pairing `a` with `b` is only safe while no OTHER waiting half could be
+ * the partner of either one. Searched over both halves' windows.
+ */
+function rivalCheck(a: Leg, b: Leg): RivalCheck {
+  const times = [a.receivedAt.getTime(), b.receivedAt.getTime()];
+  return {
+    from: new Date(Math.min(...times) - PAIR_WINDOW_MS),
+    to: new Date(Math.max(...times) + PAIR_WINDOW_MS),
+    hasRival: (waiting) =>
+      waiting
+        .map(legOf)
+        .some(
+          (other) =>
+            other !== null &&
+            other.messageId !== a.messageId &&
+            other.messageId !== b.messageId &&
+            ((canPair(a, other) && withinWindow(a, other)) || (canPair(b, other) && withinWindow(b, other))),
+        ),
+  };
+}
+
+const NO_RIVAL_CHECK: RivalCheck = { from: new Date(0), to: new Date(0), hasRival: () => false };
+
+const withinWindow = (a: Leg, b: Leg) => Math.abs(a.receivedAt.getTime() - b.receivedAt.getTime()) <= PAIR_WINDOW_MS;
 
 /** Money.equals also compares currency: 1,200 EGP is not 1,200 USD. */
 function sameAmount(a: Money, b: Money): boolean {
