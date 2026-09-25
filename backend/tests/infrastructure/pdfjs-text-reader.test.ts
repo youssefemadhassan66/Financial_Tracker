@@ -22,4 +22,12 @@ describe('PdfjsTextReader', () => {
     const huge = buildPdf(Array.from({ length: 101 }, () => [{ x: 10, top: 10, text: 'x' }]));
     await expect(reader.read(huge)).rejects.toThrow(/101 pages/);
   });
+
+  it('stops reading at the text cap instead of holding a text bomb in memory', async () => {
+    const small = new PdfjsTextReader(5);
+    const five = Array.from({ length: 5 }, (_, i) => ({ x: 10, top: 10 + i * 20, text: `t${i}` }));
+    expect((await small.read(buildPdf([five])))[0]).toHaveLength(5);
+    const six = [...five, { x: 10, top: 200, text: 't5' }];
+    await expect(small.read(buildPdf([six]))).rejects.toThrow(/more than 5 pieces of text/);
+  });
 });

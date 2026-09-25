@@ -44,6 +44,10 @@ export class PrismaCardStatementRepository implements CardStatementRepository {
     const { userId, accountId, statement } = input;
     try {
       await this.prisma.$transaction(async (tx) => {
+        // Lock the card's row first: imports of the same card run one at
+        // a time, so two months saved at once cannot both believe they are
+        // the newest and leave the OLDER month's limit on the card.
+        await tx.account.update({ where: { id: accountId }, data: { updatedAt: new Date() } });
         // The unique (account, year, month) index decides a race between
         // two uploads of the same file: the second insert fails here and
         // its whole transaction, new transactions included, rolls back.

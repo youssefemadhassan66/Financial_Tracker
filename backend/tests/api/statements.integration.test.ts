@@ -166,6 +166,31 @@ suite('credit card statement import', () => {
     expect(details.dueDay).toBe(10);
   });
 
+  it('keeps the newest month on the card when two months are uploaded at once', async () => {
+    const racer = await newUser();
+    const racerCard = (
+      await racer.post('/api/accounts', { name: 'Race Visa', type: 'credit_card', currency: 'EGP', last4s: ['1111'] })
+    ).body.account.id as string;
+    const month = (period: string, due: string, date: string) =>
+      buildPdf([
+        [
+          ...statementSummary({ period, due, total: '10.00' }),
+          ...balance(480, 'OPENING', '.00'),
+          ...statementRow(493, date, date, 'TEST BAKERY', '10.00'),
+          ...balance(520, 'CLOSING', '10.00'),
+        ],
+      ]);
+    // Smoke test only: the bad interleaving (newer month commits first)
+    // depends on timing, so a missing lock does not reliably fail it.
+    const [older, newer] = await Promise.all([
+      racer.upload(racerCard, month('Jul-26', '2026-08-10', '03-07')),
+      racer.upload(racerCard, month('Aug-26', '2026-09-15', '03-08')),
+    ]);
+    expect([older.status, newer.status]).toEqual([201, 201]);
+    const details = await prisma.creditCardDetails.findUniqueOrThrow({ where: { accountId: racerCard } });
+    expect(details.dueDay).toBe(15);
+  });
+
   it("refuses a statement of a card this account does not have", async () => {
     const res = await me.upload(card, julyPdf('9999'));
     expect(res.status).toBe(400);

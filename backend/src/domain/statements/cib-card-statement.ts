@@ -11,6 +11,7 @@ import type { CardStatement, PdfPages, PdfTextRun, StatementLine } from './card-
  *   OPENING BALANCE
  *   one row per line transaction date x≈55 | posting date x≈151 (1pt higher)
  *                    | description x≈250 | amount right-aligned, "CR" = credit
+ *   cashback block   undated rows about rewards earned, not money moved
  *   CLOSING BALANCE
  *
  * The table may continue on the next page. A long description wraps onto
@@ -54,6 +55,15 @@ interface Row {
   runs: PdfTextRun[];
 }
 
+/** The statement being read, between OPENING and CLOSING BALANCE. */
+interface Table {
+  summary: Summary;
+  opening: Decimal;
+  lines: StatementLine[];
+  /** Inside the cashback block that follows the lines. */
+  inCashback: boolean;
+}
+
 /**
  * Reads every statement in a CIB credit card e-statement PDF.
  *
@@ -65,12 +75,12 @@ interface Row {
 export function parseCibCardStatements(pages: PdfPages): CardStatement[] {
   const statements: CardStatement[] = [];
   let summary: Partial<Summary> = {};
-  let table: { summary: Summary; opening: Decimal; lines: StatementLine[] } | null = null;
+  let table: Table | null = null;
 
   for (const row of pages.flatMap(rowsOf)) {
     if (table === null) {
       if (descriptionOf(row) === 'OPENING BALANCE') {
-        table = { summary: completeSummary(summary), opening: balanceOf(row), lines: [] };
+        table = { summary: completeSummary(summary), opening: balanceOf(row), lines: [], inCashback: false };
         continue;
       }
       summary = readSummaryRow(row, summary);
@@ -83,7 +93,7 @@ export function parseCibCardStatements(pages: PdfPages): CardStatement[] {
       table = null;
       continue;
     }
-    readTableRow(row, table.summary, table.lines);
+    readTableRow(row, table);
   }
 
   if (table !== null) {
@@ -165,7 +175,8 @@ function completeSummary(summary: Partial<Summary>): Summary {
   return summary as Summary;
 }
 
-function readTableRow(row: Row, summary: Summary, lines: StatementLine[]): void {
+function readTableRow(row: Row, table: Table): void {
+  const { summary, lines } = table;
   const date = textIn(row, 0, DATE_COLUMN_END);
   const description = descriptionOf(row);
   const amount = amountText(row);
@@ -180,20 +191,29 @@ function readTableRow(row: Row, summary: Summary, lines: StatementLine[]): void 
 
   if (date === '') {
     if (amount === '') {
+      // Inside the cashback block a text row belongs to the block (a
+      // reference number), not to the last purchase.
+      if (table.inCashback) return;
       // A description too long for one row wraps onto the next.
       if (previous === undefined) throw rowError(summary, 'a text row comes before any line', description);
       previous.description = clean(`${previous.description} ${description}`);
       return;
     }
-    // The cashback summary under the lines ("Test CashBack Mar-26
-    // 120.00", "will be added to your account in 3 days"): what you
-    // EARNED, credited later as a dated line of its own. Information, not
-    // money. If such a row ever did count, the statement would stop
-    // adding up and finish() would refuse it, so skipping is safe.
-    readTableAmount(amount, summary);
+    // The cashback block under the lines ("Test CashBack Mar-26
+    // 120.00", "(Cashback will be added to" 0.00): what you EARNED,
+    // credited later as a dated line of its own. Information, not money.
+    // Anything else with an amount and no date is refused: two lines that
+    // lost their dates could cancel out and the balance check would pass.
+    const { value } = readTableAmount(amount, summary);
+    const isCashback = /cash\s*back/i.test(description);
+    if (!isCashback && !(table.inCashback && value.isZero())) {
+      throw rowError(summary, 'an amount with no date', `${description} ${amount}`);
+    }
+    table.inCashback = true;
     return;
   }
 
+  table.inCashback = false;
   const posting = textIn(row, DATE_COLUMN_END, POSTING_COLUMN_END);
   if (description === '' || amount === '') {
     throw rowError(summary, 'a dated row has no description or no amount', description);

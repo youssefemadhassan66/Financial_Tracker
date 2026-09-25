@@ -190,6 +190,44 @@ describe('parseCibCardStatements', () => {
     expect(() => parseCibCardStatements([page])).toThrow(DomainError);
   });
 
+  it('skips the cashback block, text rows included, without touching the last line', () => {
+    const page = [
+      ...summary({ total: '10.00' }),
+      ...balance(480, 'OPENING', '.00'),
+      ...line(493, '01-07', '01-07', 'TEST SHOP', '10.00'),
+      at(250, 506, 'TEST CASHBACK'),
+      at(549, 506, '0.00'),
+      at(250, 519, 'TEST REF NUM'),
+      at(549, 519, '0.00'),
+      // The reference number's value, on a row of its own with no amount.
+      at(250, 532, 'TESTREF1'),
+      at(250, 545, 'Retail CashBack'),
+      at(540, 545, '3.10'),
+      at(250, 558, '(Cashback will be added to'),
+      at(549, 558, '0.00'),
+      ...balance(580, 'CLOSING', '10.00'),
+    ];
+    expect(parseCibCardStatements([page])[0]!.lines).toEqual([
+      expect.objectContaining({ description: 'TEST SHOP', amount: '10.00' }),
+    ]);
+  });
+
+  it('refuses an amount with no date outside the cashback block', () => {
+    // Two lines that lost their dates cancel out: the balance check alone
+    // would pass, so the parser must not skip them.
+    const page = [
+      ...summary({ total: '10.00' }),
+      ...balance(480, 'OPENING', '.00'),
+      ...line(493, '01-07', '01-07', 'TEST SHOP', '10.00'),
+      at(250, 506, 'TEST CAFE'),
+      at(540, 506, '100.00'),
+      at(250, 519, 'TEST REFUND'),
+      at(530, 519, '100.00 CR'),
+      ...balance(540, 'CLOSING', '10.00'),
+    ];
+    expect(() => parseCibCardStatements([page])).toThrow(/2026-07 statement: an amount with no date \("TEST CAFE 100.00"\)/);
+  });
+
   it('finds no statement in a PDF that is not one', () => {
     expect(parseCibCardStatements([[at(30, 100, 'Hello'), at(30, 120, 'Card Limit is not a summary here')]])).toEqual([]);
   });
