@@ -198,6 +198,8 @@ export function toTransactionRow(t: Transaction) {
     occurredAt: t.occurredAt,
     source: t.source,
     transferGroupId: t.transferGroupId,
+    originalAmount: t.original?.toDecimalString() ?? null,
+    originalCurrency: t.original?.getCurrency() ?? null,
   };
 }
 
@@ -251,6 +253,10 @@ export class PrismaTransactionRepository implements TransactionRepository {
       occurredAt: row.occurredAt,
       source: row.source,
       transferGroupId: row.transferGroupId,
+      original:
+        row.originalAmount === null || row.originalCurrency === null
+          ? null
+          : { amount: row.originalAmount.toFixed(2), currency: row.originalCurrency },
     }));
   }
 }

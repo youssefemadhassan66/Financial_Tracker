@@ -40,6 +40,13 @@ export interface CreateTransactionInput {
   source: TransactionSource;
   /** Required for 'transfer' and 'trade', forbidden otherwise. */
   transferGroupId?: TransferGroupId;
+  /**
+   * What the merchant actually charged, when that was another currency:
+   * USD 21.60 for a charge the bank billed as EGP 1,036.44. `amount` stays
+   * the billed figure, the money that really left the account; this is
+   * for your information only.
+   */
+  original?: Money;
 }
 
 /**
@@ -65,6 +72,7 @@ export class Transaction {
   readonly occurredAt: Date;
   readonly source: TransactionSource;
   readonly transferGroupId: TransferGroupId | null;
+  readonly original: Money | null;
 
   private categoryId: CategoryId | null;
   private countsAsSpending: boolean;
@@ -81,6 +89,7 @@ export class Transaction {
     this.occurredAt = input.occurredAt;
     this.source = input.source;
     this.transferGroupId = input.transferGroupId ?? null;
+    this.original = input.original ?? null;
     this.countsAsSpending = input.countsAsSpending;
     this.categoryId = null;
   }
@@ -110,6 +119,15 @@ export class Transaction {
     // CHARGE was the expense. Counting both inflates every total.
     if (input.countsAsSpending && needsGroup) {
       throw new DomainError(`A '${input.kind}' transaction can never count as spending`);
+    }
+
+    if (input.original !== undefined) {
+      if (input.original.getCurrency() === input.amount.getCurrency()) {
+        throw new DomainError('An original amount is only for a charge made in another currency');
+      }
+      if (input.original.isZero()) {
+        throw new DomainError('An original amount cannot be zero');
+      }
     }
 
     return new Transaction(input);

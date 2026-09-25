@@ -115,7 +115,7 @@ export const smsPairBody = z.strictObject({
 });
 
 export const smsListQuery = z.strictObject({
-  status: z.enum(['pending', 'parsed', 'unparsed', 'ignored', 'awaiting_pair']).optional(),
+  status: z.enum(['pending', 'parsed', 'unparsed', 'ignored', 'awaiting_pair', 'awaiting_statement']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 

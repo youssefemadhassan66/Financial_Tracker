@@ -59,6 +59,26 @@ describe('Transaction — basics', () => {
   });
 });
 
+describe('Transaction — a charge made in another currency', () => {
+  it('keeps the foreign amount next to the amount billed', () => {
+    const txn = Transaction.create(build({ amount: Money.create('1036.44', 'EGP'), original: Money.create('21.60', 'USD') }));
+    expect(txn.amount.toString()).toBe('1036.44 EGP');
+    expect(txn.original?.toString()).toBe('21.60 USD');
+  });
+
+  it('has no original amount unless one is given', () => {
+    expect(Transaction.create(build()).original).toBeNull();
+  });
+
+  it('refuses an "original" in the same currency as the amount', () => {
+    expect(() => Transaction.create(build({ original: Money.create('45.50', 'EGP') }))).toThrow(DomainError);
+  });
+
+  it('refuses a zero original amount', () => {
+    expect(() => Transaction.create(build({ original: Money.create('0', 'USD') }))).toThrow(DomainError);
+  });
+});
+
 describe('Transaction — transfer group rules', () => {
   it('requires a transferGroupId for a transfer', () => {
     expect(() =>

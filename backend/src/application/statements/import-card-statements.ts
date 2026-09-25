@@ -1,19 +1,28 @@
 import { randomUUID } from 'node:crypto';
 import type { Account } from '../../domain/account.js';
-import { addDays, localDateOf, startOfLocalDay } from '../../domain/calendar-date.js';
+import { addDays, localDateOf, startOfLocalDay, type CalendarDate } from '../../domain/calendar-date.js';
+import { isCurrency } from '../../domain/currency.js';
 import { DomainError } from '../../domain/errors.js';
 import { newTransactionId, type UserId } from '../../domain/ids.js';
 import { normalizeMerchantKey } from '../../domain/merchant-key.js';
 import { Money } from '../../domain/money.js';
+import { transactionShapeOf } from '../../domain/sms/sms-template.js';
 import { defaultCountsAsSpending, type SpendingPolicy } from '../../domain/spending-policy.js';
 import { Transaction } from '../../domain/transaction.js';
 import type { CardStatement, StatementLine } from '../../domain/statements/card-statement.js';
 import { parseCibCardStatements } from '../../domain/statements/cib-card-statement.js';
-import { kindOfNewLine, MATCH_WINDOW_DAYS, reconcile } from '../../domain/statements/reconcile.js';
+import {
+  kindOfNewLine,
+  MATCH_WINDOW_DAYS,
+  priceForeignCharges,
+  reconcile,
+  type ForeignCharge,
+} from '../../domain/statements/reconcile.js';
 import { NotFoundError } from '../errors.js';
 import type { AccountRepository, UserSettingsRepository } from '../ports/finance.js';
 import type { PdfTextReader } from '../ports/pdf.js';
-import type { CardStatementRepository, CardStatementView, StatementLineToSave } from '../ports/statements.js';
+import type { ParsePayload, RawMessageRecord } from '../ports/sms.js';
+import type { CardStatementRepository, CardStatementView, PricedMessage, StatementLineToSave } from '../ports/statements.js';
 
 export interface StatementImportResult {
   /** "2026-07" */
@@ -25,6 +34,17 @@ export interface StatementImportResult {
   created: number;
   /** Card payments with no SMS pair; not recorded, waiting for you. */
   unmatchedPayments: number;
+  /** Foreign-currency charges known from SMS, now recorded at the amount billed. */
+  pricedSms: number;
+}
+
+/** A waiting foreign-currency SMS, read back from what it stored. */
+interface WaitingSms {
+  charge: ForeignCharge;
+  event: 'purchase' | 'refund';
+  merchant: string;
+  receivedAt: Date;
+  payload: ParsePayload;
 }
 
 const periodName = (p: CardStatement['period']) => `${p.year}-${String(p.month).padStart(2, '0')}`;
@@ -89,16 +109,22 @@ export class ImportCardStatements {
     policy: SpendingPolicy,
   ): Promise<StatementImportResult> {
     const period = periodName(statement.period);
-    const skipped = { period, status: 'already-imported', confirmed: 0, created: 0, unmatchedPayments: 0 } as const;
+    const skipped = { period, status: 'already-imported', confirmed: 0, created: 0, unmatchedPayments: 0, pricedSms: 0 } as const;
     if (await this.statements.isImported(account.id, statement.period)) {
       return skipped;
     }
 
     const candidates = await this.candidatesFor(userId, account, statement.lines);
-    const decisions = reconcile(statement.lines, candidates);
+    const waiting = await this.waitingSmsFor(userId, account, statement.lines);
+    const decisions = priceForeignCharges(
+      statement.lines,
+      reconcile(statement.lines, candidates),
+      [...waiting.values()].map((w) => w.charge),
+    );
 
     const lines: StatementLineToSave[] = [];
     const newTransactions: Transaction[] = [];
+    const pricedMessages: PricedMessage[] = [];
     decisions.forEach((decision, i) => {
       const line = statement.lines[i]!;
       let transactionId: string | null = null;
@@ -108,11 +134,17 @@ export class ImportCardStatements {
         const transaction = this.transactionFor(userId, account, line, policy);
         newTransactions.push(transaction);
         transactionId = transaction.id;
+      } else if (decision.kind === 'price-sms') {
+        const sms = waiting.get(decision.rawMessageId)!;
+        const transaction = this.transactionForSms(userId, account, line, sms, policy);
+        newTransactions.push(transaction);
+        pricedMessages.push({ rawMessageId: decision.rawMessageId, transactionId: transaction.id, payload: sms.payload });
+        transactionId = transaction.id;
       }
       lines.push({ lineNo: i + 1, line, transactionId });
     });
 
-    const saved = await this.statements.save({ userId, accountId: account.id, statement, lines, newTransactions });
+    const saved = await this.statements.save({ userId, accountId: account.id, statement, lines, newTransactions, pricedMessages });
     if (saved === 'already-imported') {
       return skipped;
     }
@@ -120,20 +152,34 @@ export class ImportCardStatements {
       period,
       status: 'imported',
       confirmed: decisions.filter((d) => d.kind === 'link').length,
-      created: newTransactions.length,
+      created: decisions.filter((d) => d.kind === 'create').length,
       unmatchedPayments: decisions.filter((d) => d.kind === 'unmatched-payment').length,
+      pricedSms: pricedMessages.length,
     };
   }
 
   private async candidatesFor(userId: UserId, account: Account, lines: readonly StatementLine[]) {
-    if (lines.length === 0) {
+    const window = matchWindow(lines);
+    if (window === null) {
       return [];
     }
-    const dates = lines.map((l) => l.transactionDate).sort();
-    const from = startOfLocalDay(addDays(dates[0]!, -MATCH_WINDOW_DAYS));
-    const to = startOfLocalDay(addDays(dates.at(-1)!, MATCH_WINDOW_DAYS + 1));
-    const rows = await this.statements.listUnconfirmed(userId, account.id, from, to);
+    const rows = await this.statements.listUnconfirmed(userId, account.id, window.from, window.to);
     return rows.map((r) => ({ ...r, date: localDateOf(r.occurredAt) }));
+  }
+
+  /** Foreign-currency SMS of this card waiting to be priced, by message id. */
+  private async waitingSmsFor(userId: UserId, account: Account, lines: readonly StatementLine[]): Promise<Map<string, WaitingSms>> {
+    const window = lines.some((l) => l.original !== null) ? matchWindow(lines) : null;
+    if (window === null) {
+      return new Map();
+    }
+    const rows = await this.statements.listAwaitingStatement(userId, account.id, window.from, window.to);
+    const waiting = new Map<string, WaitingSms>();
+    for (const row of rows) {
+      const sms = waitingSmsOf(row);
+      if (sms !== null) waiting.set(row.id, sms);
+    }
+    return waiting;
   }
 
   private transactionFor(userId: UserId, account: Account, line: StatementLine, policy: SpendingPolicy): Transaction {
@@ -143,6 +189,7 @@ export class ImportCardStatements {
       userId,
       accountId: account.id,
       amount: Money.create(line.amount, account.currency),
+      ...(line.original === null ? {} : { original: Money.create(line.original.amount, line.original.currency) }),
       direction: line.direction,
       kind,
       countsAsSpending: defaultCountsAsSpending(kind, policy),
@@ -154,6 +201,79 @@ export class ImportCardStatements {
       source: 'statement',
     });
   }
+
+  /**
+   * A foreign charge priced by its statement line: the amount billed from
+   * the statement; the foreign amount, merchant and time from the SMS.
+   */
+  private transactionForSms(
+    userId: UserId,
+    account: Account,
+    line: StatementLine,
+    sms: WaitingSms,
+    policy: SpendingPolicy,
+  ): Transaction {
+    const { kind } = transactionShapeOf(sms.event);
+    return Transaction.create({
+      id: newTransactionId(randomUUID()),
+      userId,
+      accountId: account.id,
+      amount: Money.create(line.amount, account.currency),
+      original: Money.create(sms.charge.amount, sms.charge.currency),
+      direction: line.direction,
+      kind,
+      countsAsSpending: defaultCountsAsSpending(kind, policy),
+      merchantKey: normalizeMerchantKey(sms.merchant),
+      merchantRaw: sms.merchant,
+      // A phone clock running ahead must not date it in the future.
+      occurredAt: new Date(Math.min(sms.receivedAt.getTime(), Date.now())),
+      source: 'statement',
+    });
+  }
+}
+
+/** [from, to) around the lines' dates, wide enough for the bank's late booking. */
+function matchWindow(lines: readonly StatementLine[]): { from: Date; to: Date } | null {
+  if (lines.length === 0) {
+    return null;
+  }
+  const dates: CalendarDate[] = lines.map((l) => l.transactionDate).sort();
+  return {
+    from: startOfLocalDay(addDays(dates[0]!, -MATCH_WINDOW_DAYS)),
+    to: startOfLocalDay(addDays(dates.at(-1)!, MATCH_WINDOW_DAYS + 1)),
+  };
+}
+
+/** Reads a waiting SMS back from its stored payload; null if it is not a priceable charge. */
+function waitingSmsOf(row: RawMessageRecord): WaitingSms | null {
+  const p = row.parsedPayload;
+  const event = p?.['event'];
+  const amount = p?.['amount'];
+  const currency = p?.['currency'];
+  const merchant = p?.['merchant'];
+  if (
+    p === null ||
+    (event !== 'purchase' && event !== 'refund') ||
+    typeof amount !== 'string' ||
+    typeof currency !== 'string' ||
+    !isCurrency(currency) ||
+    typeof merchant !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    charge: {
+      rawMessageId: row.id,
+      amount: Money.create(amount, currency).toDecimalString(),
+      currency,
+      direction: transactionShapeOf(event).direction,
+      date: localDateOf(row.receivedAt),
+    },
+    event,
+    merchant,
+    receivedAt: row.receivedAt,
+    payload: p,
+  };
 }
 
 export class ListCardStatements {

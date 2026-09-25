@@ -7,6 +7,10 @@ import { getPrismaClient } from '../../src/infrastructure/persistence/prisma-cli
 import { systemClock } from '../../src/infrastructure/system-clock.js';
 import { BANK_CATALOG } from '../../src/domain/sms/banks/index.js';
 import { buildPdf, statementRow, statementSummary, type PdfText } from '../pdf-fixture.js';
+import { PrismaCardStatementRepository } from '../../src/infrastructure/persistence/prisma-card-statement-repository.js';
+import { ConflictError } from '../../src/application/errors.js';
+import { calendarDate } from '../../src/domain/calendar-date.js';
+import type { ParsePayload } from '../../src/application/ports/sms.js';
 import { databaseAvailable, PASSWORD, testConfig } from './helpers.js';
 
 /**
@@ -30,7 +34,10 @@ async function newUser() {
   emails.push(email);
   const token = (await request(app).post('/api/auth/register').send({ email, password: PASSWORD })).body.accessToken as string;
   const as = (r: request.Test) => r.set('Authorization', `Bearer ${token}`);
+  const deviceKey = (await as(request(app).post('/api/devices')).send({ name: 'Phone' })).body.key as string;
   return {
+    sms: (body: string, receivedAt: string) =>
+      request(app).post('/api/ingest/sms').set('X-Device-Key', deviceKey).send({ sender: 'CIB', body, receivedAt }),
     get: (path: string) => as(request(app).get(path)),
     post: (path: string, body: object) => as(request(app).post(path)).send(body),
     upload: (accountId: string, pdf: Uint8Array | string, type = 'application/pdf') =>
@@ -104,7 +111,7 @@ suite('credit card statement import', () => {
     const res = await me.upload(card, julyPdf());
     expect(res.status).toBe(201);
     expect(res.body.statements).toEqual([
-      { period: '2026-07', status: 'imported', confirmed: 2, created: 2, unmatchedPayments: 1 },
+      { period: '2026-07', status: 'imported', confirmed: 2, created: 2, unmatchedPayments: 1, pricedSms: 0 },
     ]);
 
     const txs = await transactions();
@@ -145,7 +152,7 @@ suite('credit card statement import', () => {
     const res = await me.upload(card, julyPdf());
     expect(res.status).toBe(201);
     expect(res.body.statements).toEqual([
-      { period: '2026-07', status: 'already-imported', confirmed: 0, created: 0, unmatchedPayments: 0 },
+      { period: '2026-07', status: 'already-imported', confirmed: 0, created: 0, unmatchedPayments: 0, pricedSms: 0 },
     ]);
     expect(await transactions()).toHaveLength(before);
   });
@@ -160,7 +167,7 @@ suite('credit card statement import', () => {
       ],
     ]);
     expect((await me.upload(card, june)).body.statements).toEqual([
-      { period: '2026-06', status: 'imported', confirmed: 0, created: 1, unmatchedPayments: 0 },
+      { period: '2026-06', status: 'imported', confirmed: 0, created: 1, unmatchedPayments: 0, pricedSms: 0 },
     ]);
     const details = await prisma.creditCardDetails.findUniqueOrThrow({ where: { accountId: card } });
     expect(details.dueDay).toBe(10);
@@ -189,6 +196,97 @@ suite('credit card statement import', () => {
     expect([older.status, newer.status]).toEqual([201, 201]);
     const details = await prisma.creditCardDetails.findUniqueOrThrow({ where: { accountId: racerCard } });
     expect(details.dueDay).toBe(15);
+  });
+
+  it('prices a USD charge the SMS reported at the amount the statement billed', async () => {
+    const u = await newUser();
+    const usdCard = (await u.post('/api/accounts', { name: 'USD Visa', type: 'credit_card', currency: 'EGP', last4s: ['1111'] }))
+      .body.account.id as string;
+    // FAKE merchant and amounts. The SMS knows only the dollars.
+    const sms = await u.sms(
+      'Your credit card #1111 was charged for USD 21.60 at TEST SOFTWARE CLAU on 06/08/26 at 11:40.',
+      '2026-08-06T08:40:00Z',
+    );
+    expect(sms.body.processing).toBe('awaiting_statement');
+
+    // 1000 + 1036.44 + 50.00 = 2086.44. The second USD line has no SMS.
+    const august = buildPdf([
+      [
+        ...statementSummary({ period: 'Aug-26', due: '2026-09-10', total: '2086.44' }),
+        ...balance(480, 'OPENING', '1,000.00'),
+        ...statementRow(493, '06-08', '09-08', 'TEST SOFTWARE CLAUDE', '1,036.44'),
+        ...statementRow(506, '00-00', '00-00', 'USD21,60', '.00'),
+        ...statementRow(519, '10-08', '11-08', 'TEST HOSTING', '50.00'),
+        ...statementRow(532, '00-00', '00-00', 'USD1,00', '.00'),
+        ...balance(560, 'CLOSING', '2086.44'),
+      ],
+    ]);
+    const res = await u.upload(usdCard, august);
+    expect(res.body.statements).toEqual([
+      { period: '2026-08', status: 'imported', confirmed: 0, created: 1, unmatchedPayments: 0, pricedSms: 1 },
+    ]);
+
+    const txs = (await u.get(`/api/transactions?accountId=${usdCard}&limit=10`)).body.transactions as {
+      merchant: string;
+      amount: string;
+      original: { amount: string; currency: string } | null;
+      occurredAt: string;
+    }[];
+    expect(txs).toContainEqual(
+      expect.objectContaining({
+        // Merchant and time from the SMS, amount billed from the statement.
+        merchant: 'TEST SOFTWARE CLAU',
+        amount: '1036.44',
+        original: { amount: '21.60', currency: 'USD' },
+        occurredAt: '2026-08-06T08:40:00.000Z',
+      }),
+    );
+    expect(txs).toContainEqual(
+      expect.objectContaining({ merchant: 'TEST HOSTING', amount: '50.00', original: { amount: '1.00', currency: 'USD' } }),
+    );
+
+    // The SMS is done, and points at the transaction it became.
+    const message = await prisma.rawMessage.findUniqueOrThrow({
+      where: { id: sms.body.id },
+      select: { status: true, transaction: { select: { amount: true } } },
+    });
+    expect(message.status).toBe('parsed');
+    expect(message.transaction?.amount.toFixed(2)).toBe('1036.44');
+  });
+
+  it('saves nothing when a priced SMS changed after the import read it', async () => {
+    const u = await newUser();
+    const racerCard = (await u.post('/api/accounts', { name: 'Race USD', type: 'credit_card', currency: 'EGP', last4s: ['1111'] }))
+      .body.account.id as string;
+    const sms = await u.sms('Your credit card #1111 was charged for USD 5.00 at TEST APP on 06/08/26 at 11:40.', '2026-08-06T08:40:00Z');
+    const read = await prisma.rawMessage.findUniqueOrThrow({ where: { id: sms.body.id }, select: { parsedPayload: true } });
+    const payload = read.parsedPayload as ParsePayload;
+    // A reprocess re-routed it meanwhile: the payload the import holds is stale.
+    await prisma.rawMessage.update({ where: { id: sms.body.id }, data: { parsedPayload: { ...payload, accountId: card } } });
+
+    const save = new PrismaCardStatementRepository(prisma).save({
+      userId: (await prisma.account.findUniqueOrThrow({ where: { id: racerCard } })).userId as never,
+      accountId: racerCard as never,
+      statement: {
+        cardLast4: '1111',
+        period: { year: 2026, month: 8 },
+        dueDate: calendarDate('2026-09-10'),
+        creditLimit: '20000.00',
+        availableCredit: '19000.00',
+        totalDue: '0.00',
+        minimumDue: '0.00',
+        openingBalance: '0.00',
+        closingBalance: '0.00',
+        lines: [],
+      },
+      lines: [],
+      newTransactions: [],
+      pricedMessages: [{ rawMessageId: sms.body.id, transactionId: 'unused', payload }],
+    });
+    await expect(save).rejects.toBeInstanceOf(ConflictError);
+    expect(await prisma.cardStatement.count({ where: { accountId: racerCard } })).toBe(0);
+    const after = await prisma.rawMessage.findUniqueOrThrow({ where: { id: sms.body.id }, select: { status: true } });
+    expect(after.status).toBe('awaiting_statement');
   });
 
   it("refuses a statement of a card this account does not have", async () => {

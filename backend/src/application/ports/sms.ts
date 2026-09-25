@@ -13,7 +13,7 @@ export interface SmsParser {
   parse(sender: string, body: string): Promise<SmsParseResult>;
 }
 
-export type RawMessageStatus = 'pending' | 'parsed' | 'unparsed' | 'ignored' | 'awaiting_pair';
+export type RawMessageStatus = 'pending' | 'parsed' | 'unparsed' | 'ignored' | 'awaiting_pair' | 'awaiting_statement';
 
 export interface RawMessageRecord {
   id: string;
@@ -65,7 +65,7 @@ export interface SmsInbox {
   markNotTransaction(
     id: string,
     userId: UserId,
-    status: 'ignored' | 'unparsed' | 'awaiting_pair',
+    status: 'ignored' | 'unparsed' | 'awaiting_pair' | 'awaiting_statement',
     reason: string,
     payload: ParsePayload | null,
   ): Promise<boolean>;

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ProcessRawSms, ReprocessSms } from '../../src/application/sms/process-sms.js';
+import { AWAITING_STATEMENT_REASON, ProcessRawSms, ReprocessSms } from '../../src/application/sms/process-sms.js';
 import { TemplateSmsParser } from '../../src/application/sms/template-sms-parser.js';
 import type {
   AccountRepository,
@@ -118,7 +118,7 @@ class FakeInbox implements SmsInbox {
   async markNotTransaction(
     id: string,
     userId: UserId,
-    status: 'ignored' | 'unparsed' | 'awaiting_pair',
+    status: 'ignored' | 'unparsed' | 'awaiting_pair' | 'awaiting_statement',
     reason: string,
     payload: ParsePayload | null,
   ) {
@@ -169,12 +169,16 @@ class FakeInbox implements SmsInbox {
   }
 }
 
-function account(name: string, last4: string | undefined, options: { currency?: 'EGP' | 'USD'; archived?: boolean } = {}): Account {
+function account(
+  name: string,
+  last4: string | undefined,
+  options: { currency?: 'EGP' | 'USD'; archived?: boolean; type?: 'credit_card' | 'checking' } = {},
+): Account {
   const a = Account.create({
     id: newAccountId(`a0000000-0000-0000-0000-00000000${name.padStart(4, '0').slice(-4)}`),
     userId: USER,
     name,
-    type: 'credit_card',
+    type: options.type ?? 'credit_card',
     currency: options.currency ?? 'EGP',
     ...(last4 === undefined ? {} : { last4s: [last4] }),
   });
@@ -311,7 +315,21 @@ describe('ProcessRawSms', () => {
     expect((await processOne.execute(USER, 'm1')).status).toBe('unparsed');
   });
 
-  it('refuses a USD charge on an EGP account instead of recording 20 USD as 20 EGP', async () => {
+  it('holds a USD charge on an EGP card for the statement instead of recording 20 USD as 20 EGP', async () => {
+    inbox.add('m1', 'card 1234 charged USD 20.00 at TEST SOFTWARE');
+    expect(await processOne.execute(USER, 'm1')).toEqual({ status: 'awaiting_statement', reason: AWAITING_STATEMENT_REASON });
+    expect(inbox.saved).toHaveLength(0);
+    // Kept with its account, so the statement import can find it.
+    expect(inbox.rows.get('m1')?.parsedPayload).toMatchObject({
+      accountId: accounts[0]!.id,
+      amount: '20.00',
+      currency: 'USD',
+      merchant: 'TEST SOFTWARE',
+    });
+  });
+
+  it('refuses a USD charge on an EGP bank account: no card statement will ever price it', async () => {
+    accounts = [account('1', '1234', { type: 'checking' })];
     inbox.add('m1', 'card 1234 charged USD 20.00 at TEST SOFTWARE');
     expect(await processOne.execute(USER, 'm1')).toMatchObject({ status: 'unparsed', reason: expect.stringContaining('conversion') });
     expect(inbox.saved).toHaveLength(0);
@@ -396,9 +414,18 @@ describe('ProcessRawSms', () => {
       inbox.add('m1', 'card 1234 charged EGP 10.00 at KIOSK', { receivedAt: new Date('2026-09-01T10:00:00Z') });
       inbox.add('m2', 'card 9999 charged EGP 10.00 at KIOSK', { receivedAt: new Date('2026-09-02T10:00:00Z') });
       inbox.add('m3', 'Your OTP is 1234', { receivedAt: new Date('2026-09-03T10:00:00Z') });
+      inbox.add('m4', 'card 1234 charged USD 5.00 at KIOSK', { receivedAt: new Date('2026-09-04T10:00:00Z') });
 
       const summary = await new ReprocessSms(inbox, processOne).execute(USER);
-      expect(summary).toEqual({ processed: 3, parsed: 1, unparsed: 1, ignored: 1, awaitingPair: 0, next: null });
+      expect(summary).toEqual({
+        processed: 4,
+        parsed: 1,
+        unparsed: 1,
+        ignored: 1,
+        awaitingPair: 0,
+        awaitingStatement: 1,
+        next: null,
+      });
     });
 
     it('pages with a cursor, so ignored messages cannot block newer ones forever', async () => {

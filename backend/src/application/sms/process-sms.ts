@@ -29,8 +29,11 @@ import { TransferPairing } from './transfer-pairing.js';
 export type ProcessOutcome =
   /** pairedMessageId: set when this message completed a transfer pair. */
   | { status: 'parsed'; transactionId: string; pairedMessageId?: string }
-  | { status: 'ignored' | 'unparsed' | 'awaiting_pair'; reason: string }
+  | { status: 'ignored' | 'unparsed' | 'awaiting_pair' | 'awaiting_statement'; reason: string }
   | { status: 'already-processed' };
+
+export const AWAITING_STATEMENT_REASON =
+  'Charged in another currency; the card statement will show the amount billed in your currency';
 
 /**
  * Turns ONE stored SMS into a transaction, or records why it could not.
@@ -82,6 +85,19 @@ export class ProcessRawSms {
     try {
       account = await this.routeToAccount(userId, parsed);
       const event = parsed.event;
+      if (parsed.currency !== account.currency) {
+        // e.g. a USD Claude charge on an EGP card. The bank converts at
+        // its own rate, which the SMS does not state; recording the USD
+        // figure in an EGP account would be wrong by ~50x. A card
+        // statement shows the billed amount, so a card charge waits for
+        // it. Anything else has no statement to wait for.
+        if (account.type === 'credit_card' && (event === 'purchase' || event === 'refund')) {
+          return await this.awaitStatement(message.id, userId, { ...payload, accountId: account.id });
+        }
+        throw new DomainError(
+          `A ${parsed.currency} ${event} on a ${account.currency} account needs currency conversion, which is not supported`,
+        );
+      }
       if (isTransferLeg(event)) {
         // Half of an internal transfer: never a transaction on its own.
         assertLegAccountType(event, account);
@@ -152,17 +168,15 @@ export class ProcessRawSms {
     if (matches.length > 1) {
       throw new DomainError(`More than one active account ends in ${digits}; cannot tell which one`);
     }
-    const account = matches[0]!;
+    return matches[0]!;
+  }
 
-    if (parsed.currency !== account.currency) {
-      // e.g. a USD Claude charge on an EGP card. The bank converts at its
-      // own rate, which the SMS may or may not state; recording the USD
-      // figure in an EGP account would be wrong by ~50x.
-      throw new DomainError(
-        `A ${parsed.currency} charge on a ${account.currency} account needs currency conversion, which is not supported yet`,
-      );
+  private async awaitStatement(id: string, userId: UserId, payload: ParsePayload): Promise<ProcessOutcome> {
+    const parked = await this.inbox.markNotTransaction(id, userId, 'awaiting_statement', AWAITING_STATEMENT_REASON, payload);
+    if (!parked) {
+      return { status: 'already-processed' };
     }
-    return account;
+    return { status: 'awaiting_statement', reason: AWAITING_STATEMENT_REASON };
   }
 
   private async buildTransaction(
@@ -220,6 +234,8 @@ export interface ReprocessSummary {
   ignored: number;
   /** Transfer halves still waiting for their other half. */
   awaitingPair: number;
+  /** Foreign card charges waiting for the card statement. */
+  awaitingStatement: number;
   /** Pass back as `after` to continue; null when everything was covered. */
   next: string | null;
 }
@@ -246,6 +262,7 @@ export class ReprocessSms {
       unparsed: 0,
       ignored: 0,
       awaitingPair: 0,
+      awaitingStatement: 0,
       // A full page means there may be more; a short page means done.
       next: ids.length === limit ? (ids[ids.length - 1] ?? null) : null,
     };
@@ -259,6 +276,8 @@ export class ReprocessSms {
       if (outcome.status === 'awaiting_pair') {
         summary.awaitingPair += 1;
         waitingInBatch.add(id);
+      } else if (outcome.status === 'awaiting_statement') {
+        summary.awaitingStatement += 1;
       } else if (outcome.status !== 'already-processed') {
         summary[outcome.status] += 1;
       }

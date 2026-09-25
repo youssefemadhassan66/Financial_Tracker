@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type { AccountId, UserId } from '../../domain/ids.js';
 import type { Transaction } from '../../domain/transaction.js';
 import type { CardStatement } from '../../domain/statements/card-statement.js';
@@ -6,11 +6,17 @@ import { ConflictError } from '../../application/errors.js';
 import type {
   CardStatementRepository,
   CardStatementView,
+  PricedMessage,
   StatementLineToSave,
   UnconfirmedTransaction,
 } from '../../application/ports/statements.js';
+import type { RawMessageRecord } from '../../application/ports/sms.js';
 import { isUniqueViolation } from './prisma-errors.js';
 import { toTransactionRow } from './prisma-finance-repositories.js';
+import { RECORD_FIELDS, toRecord } from './prisma-raw-message-repository.js';
+
+/** Thrown inside the save to roll it back when a priced SMS is no longer waiting. */
+class PricedMessageTaken extends Error {}
 
 /** A calendar date as the Date a Postgres DATE column wants (UTC midnight). */
 const asDbDate = (date: string) => new Date(`${date}T00:00:00Z`);
@@ -34,12 +40,26 @@ export class PrismaCardStatementRepository implements CardStatementRepository {
     return rows.map((r) => ({ ...r, amount: r.amount.toFixed(2) }));
   }
 
+  async listAwaitingStatement(userId: UserId, accountId: AccountId, from: Date, to: Date): Promise<RawMessageRecord[]> {
+    const rows = await this.prisma.rawMessage.findMany({
+      where: {
+        userId,
+        status: 'awaiting_statement',
+        receivedAt: { gte: from, lt: to },
+        parsedPayload: { path: ['accountId'], equals: accountId },
+      },
+      select: RECORD_FIELDS,
+    });
+    return rows.map(toRecord);
+  }
+
   async save(input: {
     userId: UserId;
     accountId: AccountId;
     statement: CardStatement;
     lines: StatementLineToSave[];
     newTransactions: Transaction[];
+    pricedMessages: PricedMessage[];
   }): Promise<'saved' | 'already-imported'> {
     const { userId, accountId, statement } = input;
     try {
@@ -67,8 +87,12 @@ export class PrismaCardStatementRepository implements CardStatementRepository {
           },
           select: { id: true },
         });
+        await claimPricedMessages(tx, userId, input.pricedMessages);
         if (input.newTransactions.length > 0) {
-          await tx.transaction.createMany({ data: input.newTransactions.map(toTransactionRow) });
+          const smsOf = new Map(input.pricedMessages.map((m) => [m.transactionId, m.rawMessageId]));
+          await tx.transaction.createMany({
+            data: input.newTransactions.map((t) => ({ ...toTransactionRow(t), rawMessageId: smsOf.get(t.id) ?? null })),
+          });
         }
         await tx.cardStatementLine.createMany({
           data: input.lines.map(({ lineNo, line, transactionId }) => ({
@@ -96,6 +120,9 @@ export class PrismaCardStatementRepository implements CardStatementRepository {
         }
       });
     } catch (error) {
+      if (error instanceof PricedMessageTaken) {
+        throw new ConflictError('An SMS this statement prices changed at the same moment; upload the file again');
+      }
       if (!isUniqueViolation(error)) {
         throw error;
       }
@@ -129,5 +156,27 @@ export class PrismaCardStatementRepository implements CardStatementRepository {
       unmatchedPayments: r.lines.filter((l) => l.transactionId === null).length,
       importedAt: r.importedAt,
     }));
+  }
+}
+
+/**
+ * Marks each priced SMS parsed, but only while it is still waiting with
+ * the payload we matched. A reprocess that re-routed it to another card,
+ * or another import that priced it first, makes this import roll back.
+ */
+async function claimPricedMessages(tx: Prisma.TransactionClient, userId: UserId, messages: PricedMessage[]): Promise<void> {
+  for (const message of messages) {
+    const claimed = await tx.rawMessage.updateMany({
+      where: {
+        id: message.rawMessageId,
+        userId,
+        status: 'awaiting_statement',
+        parsedPayload: { equals: message.payload },
+      },
+      data: { status: 'parsed', parseError: null },
+    });
+    if (claimed.count === 0) {
+      throw new PricedMessageTaken();
+    }
   }
 }
