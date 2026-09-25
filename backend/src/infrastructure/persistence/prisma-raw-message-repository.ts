@@ -9,6 +9,7 @@ import type {
   RawMessageRecord,
   RawMessageStatus,
   RawMessageView,
+  RivalCheck,
   SmsInbox,
   TransferPairLeg,
 } from '../../application/ports/sms.js';
@@ -26,6 +27,18 @@ const RECORD_FIELDS = {
 
 /** Thrown inside a $transaction to roll it back when a claim fails. */
 class ClaimLost extends Error {}
+/** Thrown inside a $transaction to roll it back when a rival half shows up. */
+class RivalFound extends Error {}
+
+/**
+ * Locks the user's row until the transaction ends: parking a transfer
+ * half and pairing two halves then run one at a time per user, so a
+ * pairing's last look for rivals cannot miss a half parked meanwhile.
+ * A bound parameter, like every Prisma query; no SQL is built from text.
+ */
+async function lockPairingFor(tx: Prisma.TransactionClient, userId: UserId): Promise<void> {
+  await tx.$queryRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+}
 
 /**
  * The stored JSON back as a ParsePayload. We wrote it, but it is still
@@ -127,11 +140,18 @@ export class PrismaRawMessageRepository implements RawMessageRepository, SmsInbo
   ): Promise<boolean> {
     // The status guard keeps a slow run from downgrading a message that
     // a faster run already turned into a transaction.
-    const updated = await this.prisma.rawMessage.updateMany({
-      where: { id, userId, status: { in: NEEDS_PARSE } },
-      data: { status, parseError: reason, parsedPayload: payload ?? Prisma.DbNull },
+    const mark = (db: Prisma.TransactionClient) =>
+      db.rawMessage.updateMany({
+        where: { id, userId, status: { in: NEEDS_PARSE } },
+        data: { status, parseError: reason, parsedPayload: payload ?? Prisma.DbNull },
+      });
+    if (status !== 'awaiting_pair') {
+      return (await mark(this.prisma)).count > 0;
+    }
+    return this.prisma.$transaction(async (tx) => {
+      await lockPairingFor(tx, userId);
+      return (await mark(tx)).count > 0;
     });
-    return updated.count > 0;
   }
 
   completeWithTransaction(
@@ -170,7 +190,8 @@ export class PrismaRawMessageRepository implements RawMessageRepository, SmsInbo
   async completeTransferPair(
     userId: UserId,
     legs: readonly [TransferPairLeg, TransferPairLeg],
-  ): Promise<'saved' | 'already-processed'> {
+    check: RivalCheck,
+  ): Promise<'saved' | 'already-processed' | 'ambiguous'> {
     // Claim in a FIXED order (by message id). Two runs pairing the same two
     // messages then lock the rows in the same order: the second waits on
     // the first row instead of each holding one row and waiting for the
@@ -178,6 +199,7 @@ export class PrismaRawMessageRepository implements RawMessageRepository, SmsInbo
     const ordered = [...legs].sort((a, b) => (a.messageId < b.messageId ? -1 : 1));
     try {
       await this.prisma.$transaction(async (tx) => {
+        await lockPairingFor(tx, userId);
         for (const leg of ordered) {
           // Claim only a half that is STILL waiting with the SAME payload
           // we built the transactions from. If a reprocess re-routed it
@@ -198,6 +220,15 @@ export class PrismaRawMessageRepository implements RawMessageRepository, SmsInbo
             throw new ClaimLost();
           }
         }
+        // Both halves are claimed (no longer waiting), so what is still
+        // waiting is everything else: the last look for a rival.
+        const waiting = await tx.rawMessage.findMany({
+          where: { userId, status: 'awaiting_pair', receivedAt: { gte: check.from, lte: check.to } },
+          select: RECORD_FIELDS,
+        });
+        if (check.hasRival(waiting.map(toRecord))) {
+          throw new RivalFound();
+        }
         for (const leg of ordered) {
           await tx.transaction.create({ data: { ...toTransactionRow(leg.transaction), rawMessageId: leg.messageId } });
         }
@@ -205,6 +236,9 @@ export class PrismaRawMessageRepository implements RawMessageRepository, SmsInbo
     } catch (error) {
       if (error instanceof ClaimLost) {
         return 'already-processed';
+      }
+      if (error instanceof RivalFound) {
+        return 'ambiguous';
       }
       throw error;
     }
