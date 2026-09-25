@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
+import { InvalidPdfError } from '../../application/errors.js';
 import type { Container } from '../container.js';
 import { requireUser } from '../middleware/authenticate.js';
 import {
@@ -29,12 +30,44 @@ function defined<T extends object>(value: T): { [K in keyof T]: Exclude<T[K], un
   return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as never;
 }
 
+/** A year of monthly statements is well under 1 MB; the cap stops abuse. */
+const MAX_STATEMENT_BYTES = '5mb';
+
+/**
+ * The body must be the PDF itself (Content-Type: application/pdf). The
+ * magic bytes are checked here, before the upload reaches a PDF parser:
+ * a file named .pdf is not a PDF because of its name.
+ */
+function pdfBody(body: unknown): Uint8Array {
+  if (!Buffer.isBuffer(body) || body.subarray(0, 5).toString('latin1') !== '%PDF-') {
+    throw new InvalidPdfError('Send the statement file itself as the body, with Content-Type: application/pdf');
+  }
+  return new Uint8Array(body);
+}
+
 export function financeRouter(container: Container): Router {
   const router = Router();
   // Attached to EACH route rather than router.use(): this router is
   // mounted at /api, so a router-level guard would intercept every
   // unmatched /api/* path and answer 401 where 404 is correct.
   const auth = requireUser(container.accessTokens);
+
+  // --- credit card statements --------------------------------------------
+  router.post(
+    '/accounts/:id/statements',
+    auth,
+    express.raw({ type: 'application/pdf', limit: MAX_STATEMENT_BYTES }),
+    async (req, res) => {
+      const { id } = accountIdParams.parse(req.params);
+      const statements = await container.importCardStatements.execute(req.auth!.userId, id, pdfBody(req.body));
+      res.status(201).json({ statements });
+    },
+  );
+
+  router.get('/accounts/:id/statements', auth, async (req, res) => {
+    const { id } = accountIdParams.parse(req.params);
+    res.json({ statements: await container.listCardStatements.execute(req.auth!.userId, id) });
+  });
 
   // --- categories ------------------------------------------------------
   router.get('/categories', auth, async (req, res) => {

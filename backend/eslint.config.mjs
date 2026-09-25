@@ -8,6 +8,8 @@ import importPlugin from 'eslint-plugin-import';
 // `express` or `@prisma/client` directly.
 const HTTP_PACKAGES = ['express', 'helmet', 'cors', 'cookie-parser', 'express-rate-limit', 'zod'];
 const INFRA_PACKAGES = ['@prisma/client', '@prisma/adapter-pg', 'pg', 'argon2', 'jose'];
+// Imported by subpath (pdfjs-dist/legacy/build/pdf.mjs), so matched as patterns.
+const INFRA_PATTERNS = ['pdfjs-dist', 'pdfjs-dist/*'];
 const restrict = (names, message) => names.map((name) => ({ name, message }));
 
 export default tseslint.config(
@@ -89,6 +91,7 @@ export default tseslint.config(
             ...restrict(HTTP_PACKAGES, 'Only src/api may use HTTP and validation libraries.'),
             ...restrict(INFRA_PACKAGES, 'Only src/infrastructure may use database and crypto libraries.'),
           ],
+          patterns: [{ group: INFRA_PATTERNS, message: 'Only src/infrastructure may read PDFs.' }],
         },
       ],
     },
@@ -104,6 +107,7 @@ export default tseslint.config(
             INFRA_PACKAGES,
             'The API layer reaches the database and crypto through use cases, never directly.',
           ),
+          patterns: [{ group: INFRA_PATTERNS, message: 'The API layer reads PDFs through use cases, never directly.' }],
         },
       ],
     },

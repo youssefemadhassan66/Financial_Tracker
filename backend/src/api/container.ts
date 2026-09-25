@@ -35,6 +35,9 @@ import {
 } from '../application/subscriptions/subscriptions.js';
 import type { AccessTokenService } from '../application/ports/security.js';
 import { getPrismaClient } from '../infrastructure/persistence/prisma-client.js';
+import { PrismaCardStatementRepository } from '../infrastructure/persistence/prisma-card-statement-repository.js';
+import { PdfjsTextReader } from '../infrastructure/pdf/pdfjs-text-reader.js';
+import { ImportCardStatements, ListCardStatements } from '../application/statements/import-card-statements.js';
 import { PrismaUserRepository } from '../infrastructure/persistence/prisma-user-repository.js';
 import { PrismaRefreshTokenRepository } from '../infrastructure/persistence/prisma-refresh-token-repository.js';
 import { PrismaDeviceKeyRepository } from '../infrastructure/persistence/prisma-device-key-repository.js';
@@ -88,6 +91,8 @@ export interface Container {
   listCategories: ListCategories;
   createCategory: CreateCategory;
   listAccounts: ListAccounts;
+  importCardStatements: ImportCardStatements;
+  listCardStatements: ListCardStatements;
   createAccount: CreateAccount;
   updateAccount: UpdateAccount;
   recordTransaction: RecordTransaction;
@@ -116,6 +121,7 @@ export function buildContainer(
   const categories = new PrismaCategoryRepository(prisma);
   const accounts = new PrismaAccountRepository(prisma);
   const availableBalances = new PrismaAvailableBalanceRepository(prisma);
+  const cardStatements = new PrismaCardStatementRepository(prisma);
   const transactions = new PrismaTransactionRepository(prisma);
   const settings = new PrismaUserSettingsRepository(prisma);
   const subscriptions = new PrismaSubscriptionRepository(prisma);
@@ -159,6 +165,8 @@ export function buildContainer(
     listCategories: new ListCategories(categories),
     createCategory: new CreateCategory(categories),
     listAccounts: new ListAccounts(accounts, availableBalances),
+    importCardStatements: new ImportCardStatements(accounts, cardStatements, new PdfjsTextReader(), settings),
+    listCardStatements: new ListCardStatements(accounts, cardStatements),
     createAccount: new CreateAccount(accounts),
     updateAccount: new UpdateAccount(accounts, availableBalances),
     recordTransaction: new RecordTransaction(accounts, categories, transactions, settings),

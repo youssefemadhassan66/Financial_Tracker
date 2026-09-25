@@ -1,6 +1,6 @@
 import type { Account } from '../../domain/account.js';
 import type { Money } from '../../domain/money.js';
-import type { Transaction, TransactionDirection } from '../../domain/transaction.js';
+import type { Transaction, TransactionDirection, TransactionSource } from '../../domain/transaction.js';
 import type { Subscription, SubscriptionStatus } from '../../domain/subscription.js';
 import type { CategoryKind } from '../../domain/default-categories.js';
 import type { Currency } from '../../domain/currency.js';
@@ -85,7 +85,7 @@ export interface TransactionView {
   category: { id: string; name: string; icon: string | null } | null;
   merchant: string;
   occurredAt: Date;
-  source: 'sms' | 'manual';
+  source: TransactionSource;
   transferGroupId: string | null;
 }
 
