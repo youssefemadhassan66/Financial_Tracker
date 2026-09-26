@@ -1,4 +1,5 @@
-import type { PrismaClient, Subscription as SubscriptionRow } from '@prisma/client';
+import type { Prisma, PrismaClient, Subscription as SubscriptionRow } from '@prisma/client';
+import type { Currency } from '../../domain/currency.js';
 import { Money } from '../../domain/money.js';
 import { Account } from '../../domain/account.js';
 import { Subscription, type SubscriptionStatus } from '../../domain/subscription.js';
@@ -23,12 +24,15 @@ import type {
   CategoryTotalRow,
   InstantRange,
   KindTotalRow,
+  LinkedCharge,
   NewCategory,
   ReportedAvailable,
+  SubscriptionChargeRepository,
   SubscriptionRepository,
   TransactionFilter,
   TransactionRepository,
   TransactionView,
+  UnlinkedCharge,
   UserSettingsRepository,
 } from '../../application/ports/finance.js';
 import { isUniqueViolation } from './prisma-errors.js';
@@ -391,5 +395,81 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
       orderBy: [{ status: 'asc' }, { name: 'asc' }],
     });
     return rows.map(toSubscription);
+  }
+}
+
+// ---------------------------------------------------------------------
+// Subscription charges
+// ---------------------------------------------------------------------
+
+const CHARGE_FIELDS = {
+  id: true, occurredAt: true, amount: true, currency: true, originalAmount: true, originalCurrency: true,
+} as const;
+
+/** The billed amount and, when set, the foreign original of a transaction row. */
+function amountsOf(row: {
+  amount: Prisma.Decimal;
+  currency: Currency;
+  originalAmount: Prisma.Decimal | null;
+  originalCurrency: Currency | null;
+}): { amount: Money; original: Money | null } {
+  return {
+    amount: Money.create(row.amount.toFixed(2), row.currency),
+    original:
+      row.originalAmount === null || row.originalCurrency === null
+        ? null
+        : Money.create(row.originalAmount.toFixed(2), row.originalCurrency),
+  };
+}
+
+export class PrismaSubscriptionChargeRepository implements SubscriptionChargeRepository {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async listUnlinkedCharges(userId: UserId, since: Date): Promise<UnlinkedCharge[]> {
+    const rows = await this.prisma.transaction.findMany({
+      where: { userId, subscriptionId: null, kind: 'expense', direction: 'debit', occurredAt: { gte: since } },
+      select: { ...CHARGE_FIELDS, accountId: true, merchantKey: true, kind: true, direction: true },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      accountId: r.accountId,
+      merchantKey: r.merchantKey,
+      kind: r.kind,
+      direction: r.direction,
+      occurredAt: r.occurredAt,
+      ...amountsOf(r),
+    }));
+  }
+
+  async link(userId: UserId, transactionId: string, subscriptionId: string): Promise<boolean> {
+    // Both must be yours: a transaction of yours is never linked to
+    // someone else's subscription, whatever id the caller passes.
+    const owned = await this.prisma.subscription.count({ where: { id: subscriptionId, userId } });
+    if (owned === 0) {
+      return false;
+    }
+    // "Still unlinked" in the WHERE: a concurrent run, or your own manual
+    // choice, is never overwritten.
+    const updated = await this.prisma.transaction.updateMany({
+      where: { id: transactionId, userId, subscriptionId: null },
+      data: { subscriptionId },
+    });
+    return updated.count > 0;
+  }
+
+  async linkedCharges(userId: UserId): Promise<Map<string, LinkedCharge[]>> {
+    const rows = await this.prisma.transaction.findMany({
+      where: { userId, subscriptionId: { not: null } },
+      select: { ...CHARGE_FIELDS, subscriptionId: true },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    });
+    const bySubscription = new Map<string, LinkedCharge[]>();
+    for (const row of rows) {
+      const list = bySubscription.get(row.subscriptionId!) ?? [];
+      list.push({ transactionId: row.id, occurredAt: row.occurredAt, ...amountsOf(row) });
+      bySubscription.set(row.subscriptionId!, list);
+    }
+    return bySubscription;
   }
 }

@@ -109,6 +109,39 @@ export interface SubscriptionRepository {
   listForUser(userId: UserId, status?: SubscriptionStatus): Promise<Subscription[]>;
 }
 
+/** An expense not yet linked to a subscription. */
+export interface UnlinkedCharge {
+  id: string;
+  accountId: string;
+  merchantKey: string;
+  kind: TransactionKind;
+  direction: TransactionDirection;
+  occurredAt: Date;
+  amount: Money;
+  original: Money | null;
+}
+
+/** A charge already linked to a subscription. */
+export interface LinkedCharge {
+  transactionId: string;
+  occurredAt: Date;
+  amount: Money;
+  original: Money | null;
+}
+
+/** Which transactions pay which subscription. */
+export interface SubscriptionChargeRepository {
+  /** Your debit expenses since `since` that pay no subscription yet. */
+  listUnlinkedCharges(userId: UserId, since: Date): Promise<UnlinkedCharge[]>;
+  /**
+   * Links the transaction to the subscription. False, changing nothing,
+   * unless both are yours and the transaction is still unlinked.
+   */
+  link(userId: UserId, transactionId: string, subscriptionId: string): Promise<boolean>;
+  /** Per subscription id, its linked charges, oldest first. */
+  linkedCharges(userId: UserId): Promise<Map<string, LinkedCharge[]>>;
+}
+
 // ---------------------------------------------------------------------
 // Analytics read model
 //

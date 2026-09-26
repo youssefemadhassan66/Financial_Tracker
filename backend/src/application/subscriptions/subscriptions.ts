@@ -18,7 +18,14 @@ import { newAccountId, newCategoryId, type AccountId, type CategoryId, type User
 import { DomainError } from '../../domain/errors.js';
 import { NotFoundError } from '../errors.js';
 import type { Clock } from '../ports/clock.js';
-import type { AccountRepository, CategoryRepository, SubscriptionRepository } from '../ports/finance.js';
+import { comparableAmount, missedCharge } from '../../domain/subscription-matching.js';
+import type {
+  AccountRepository,
+  CategoryRepository,
+  LinkedCharge,
+  SubscriptionChargeRepository,
+  SubscriptionRepository,
+} from '../ports/finance.js';
 
 export interface SubscriptionDto {
   id: string;
@@ -35,9 +42,23 @@ export interface SubscriptionDto {
   categoryId: string | null;
   accountId: string | null;
   notes: string | null;
+  /** The newest charge linked to it. */
+  lastCharge: {
+    transactionId: string;
+    occurredAt: Date;
+    amount: string;
+    currency: Currency;
+    original: { amount: string; currency: Currency } | null;
+  } | null;
+  /** The last charge was not the subscription's price. */
+  priceChanged: boolean;
+  /** The latest billing date that passed without a charge; null if none. */
+  missedCharge: CalendarDate | null;
 }
 
-function toDto(sub: Subscription, today: CalendarDate): SubscriptionDto {
+function toDto(sub: Subscription, today: CalendarDate, charges: readonly LinkedCharge[] = []): SubscriptionDto {
+  const last = charges.at(-1);
+  const lastAmount = last === undefined ? null : comparableAmount(sub, last);
   return {
     id: sub.id,
     name: sub.name,
@@ -52,6 +73,25 @@ function toDto(sub: Subscription, today: CalendarDate): SubscriptionDto {
     categoryId: sub.categoryId,
     accountId: sub.accountId,
     notes: sub.notes,
+    lastCharge:
+      last === undefined
+        ? null
+        : {
+            transactionId: last.transactionId,
+            occurredAt: last.occurredAt,
+            amount: last.amount.toDecimalString(),
+            currency: last.amount.getCurrency(),
+            original:
+              last.original === null
+                ? null
+                : { amount: last.original.toDecimalString(), currency: last.original.getCurrency() },
+          },
+    priceChanged: lastAmount !== null && !lastAmount.equals(sub.amount),
+    missedCharge: missedCharge(
+      sub,
+      charges.map((c) => localDateOf(c.occurredAt, DEFAULT_TIME_ZONE)),
+      today,
+    ),
   };
 }
 
@@ -122,12 +162,14 @@ export class CreateSubscription {
 export class ListSubscriptions {
   constructor(
     private readonly subscriptions: SubscriptionRepository,
+    private readonly charges: SubscriptionChargeRepository,
     private readonly clock: Clock,
   ) {}
 
   async execute(userId: UserId, status?: SubscriptionStatus): Promise<SubscriptionDto[]> {
     const today = localDateOf(this.clock.now(), DEFAULT_TIME_ZONE);
-    return (await this.subscriptions.listForUser(userId, status)).map((s) => toDto(s, today));
+    const charges = await this.charges.linkedCharges(userId);
+    return (await this.subscriptions.listForUser(userId, status)).map((s) => toDto(s, today, charges.get(s.id)));
   }
 }
 
@@ -136,6 +178,7 @@ export type SubscriptionAction = 'pause' | 'resume' | 'cancel';
 export class ChangeSubscriptionStatus {
   constructor(
     private readonly subscriptions: SubscriptionRepository,
+    private readonly charges: SubscriptionChargeRepository,
     private readonly clock: Clock,
   ) {}
 
@@ -152,7 +195,8 @@ export class ChangeSubscriptionStatus {
     else subscription.cancel(this.clock.now());
 
     await this.subscriptions.save(subscription);
-    return toDto(subscription, localDateOf(this.clock.now(), DEFAULT_TIME_ZONE));
+    const charges = (await this.charges.linkedCharges(userId)).get(subscription.id);
+    return toDto(subscription, localDateOf(this.clock.now(), DEFAULT_TIME_ZONE), charges);
   }
 }
 

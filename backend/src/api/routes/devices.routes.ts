@@ -54,6 +54,15 @@ export function ingestRouter(container: Container, limits: RateLimiters): Router
         processing = 'pending';
       }
     }
+    if (processing === 'parsed') {
+      // Best effort, like processing: the transaction is saved; linking it
+      // to its subscription can happen on the next run.
+      try {
+        await container.matchSubscriptionCharges.execute(device.userId);
+      } catch (error) {
+        console.error('[subscriptions] matching after an SMS failed', error);
+      }
+    }
 
     // 201 for new, 200 for a duplicate. Both are success: the forwarder
     // must stop retrying either way.
