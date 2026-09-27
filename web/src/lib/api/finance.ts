@@ -2,6 +2,7 @@ import { apiFetch } from './client';
 import type {
   AccountDto,
   CategoryAnalytics,
+  CategoryRecord,
   SubscriptionSummary,
   TransactionView,
 } from './types';
@@ -16,11 +17,53 @@ export const accountsQuery = {
   queryFn: () => apiFetch<{ accounts: AccountDto[] }>('/api/accounts').then((r) => r.accounts),
 };
 
+export const categoriesQuery = {
+  queryKey: ['categories'] as const,
+  queryFn: () =>
+    apiFetch<{ categories: CategoryRecord[] }>('/api/categories').then((r) => r.categories),
+};
+
 export function recentTransactionsQuery(limit: number) {
   return {
     queryKey: ['transactions', { limit }] as const,
     queryFn: () =>
       apiFetch<{ transactions: TransactionView[] }>(`/api/transactions?limit=${limit}`).then((r) => r.transactions),
+  };
+}
+
+export interface TransactionsFilterParams {
+  accountId?: string;
+  categoryId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}
+
+export function transactionsInfiniteQuery(filters: TransactionsFilterParams) {
+  const limit = filters.limit ?? 50;
+  return {
+    queryKey: ['transactions', 'infinite', filters] as const,
+    queryFn: async ({ pageParam }: { pageParam?: string }) => {
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      if (filters.accountId) params.set('accountId', filters.accountId);
+      if (filters.categoryId) params.set('categoryId', filters.categoryId);
+      if (filters.from) params.set('from', filters.from);
+      if (filters.to) params.set('to', filters.to);
+      if (pageParam) params.set('before', pageParam);
+
+      const res = await apiFetch<{ transactions: TransactionView[] }>(
+        `/api/transactions?${params.toString()}`,
+      );
+      return res.transactions;
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage: TransactionView[]) => {
+      // Known backend limit: rows sharing the same occurredAt across a page
+      // boundary can be skipped (docs/backend-requests/001, section 4).
+      if (lastPage.length < limit) return undefined;
+      return lastPage[lastPage.length - 1]?.occurredAt;
+    },
   };
 }
 

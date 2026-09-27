@@ -7,7 +7,13 @@ import { cn } from '@/lib/utils';
  * One transaction. Direction is carried by an icon, a sign and a label for
  * screen readers, never by color alone (PRODUCT.md accessibility).
  */
-export function TransactionRow({ tx }: { tx: TransactionView }) {
+export function TransactionRow({
+  tx,
+  showDate = true,
+}: {
+  tx: TransactionView;
+  showDate?: boolean;
+}) {
   const isTransfer = tx.kind === 'transfer' || tx.transferGroupId !== null;
   const moneyIn = tx.direction === 'credit';
   const Icon = isTransfer ? ArrowLeftRight : moneyIn ? ArrowDownLeft : ArrowUpRight;
@@ -30,7 +36,8 @@ export function TransactionRow({ tx }: { tx: TransactionView }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{title}</p>
         <p className="truncate text-xs text-muted-foreground">
-          {detail} · {formatInstantDay(tx.occurredAt)}
+          {detail}
+          {showDate ? ` · ${formatInstantDay(tx.occurredAt)}` : ''}
         </p>
       </div>
       <div className="shrink-0 text-end">

@@ -5,7 +5,7 @@ import { FileText, MessageSquareText, Wallet, type LucideIcon } from 'lucide-rea
 import { DashboardSection, RowsSkeleton, SectionError } from '@/components/dashboard/section';
 import { AccountsList, UpcomingList } from '@/components/dashboard/side-lists';
 import { SpendingPanel } from '@/components/dashboard/spending-panel';
-import { TransactionRow } from '@/components/dashboard/transaction-row';
+import { TransactionRow } from '@/components/transactions/transaction-row';
 import { PageHeader } from '@/components/page-header';
 import {
   accountsQuery,

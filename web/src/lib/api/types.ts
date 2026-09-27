@@ -163,6 +163,11 @@ export interface CreateAccountRequest {
   last4s?: string[];
 }
 
+export interface UpdateAccountRequest {
+  name?: string;
+  last4s?: string[];
+}
+
 export interface CreateCategoryRequest {
   name: string;
   kind?: CategoryKind;
