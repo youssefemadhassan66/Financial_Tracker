@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GetCategoryAnalytics } from '../../src/application/analytics/category-analytics.js';
 import { GetSubscriptionSummary } from '../../src/application/subscriptions/subscriptions.js';
+import { MatchSubscriptionCharges } from '../../src/application/subscriptions/match-charges.js';
 import type {
   AnalyticsQueries,
   CategoryRecord,
@@ -8,7 +9,10 @@ import type {
   CategoryTotalRow,
   InstantRange,
   KindTotalRow,
+  LinkedCharge,
+  SubscriptionChargeRepository,
   SubscriptionRepository,
+  UnlinkedCharge,
 } from '../../src/application/ports/finance.js';
 import { Subscription, type BillingCycle } from '../../src/domain/subscription.js';
 import { Money } from '../../src/domain/money.js';
@@ -200,5 +204,55 @@ describe('GetSubscriptionSummary', () => {
       ['Claude', '2026-09-25'],
       ['Netflix', '2026-10-05'],
     ]);
+  });
+});
+
+describe('MatchSubscriptionCharges', () => {
+  // 15 Sep 2026, 12:00 in Cairo. FAKE merchant and amounts.
+  const clock = new FakeClock(new Date('2026-09-15T09:00:00Z'));
+  const stream = Subscription.create({
+    id: 'sub-1', userId: USER, name: 'Test Stream', merchantKey: newMerchantKey('TEST STREAM'),
+    amount: Money.create('149.99', 'EGP'), cycle: 'monthly', anchorDate: calendarDate('2026-01-15'),
+    categoryId: null, accountId: null, notes: null,
+  });
+  const subs: SubscriptionRepository = {
+    create: async () => undefined,
+    save: async () => undefined,
+    findForUser: async () => null,
+    listForUser: async (_u, status) => [stream].filter((s) => status === undefined || s.status === status),
+  };
+
+  class InMemoryCharges implements SubscriptionChargeRepository {
+    readonly links = new Map<string, string>();
+    constructor(private readonly charges: UnlinkedCharge[]) {}
+    async listUnlinkedCharges(): Promise<UnlinkedCharge[]> {
+      return this.charges.filter((c) => !this.links.has(c.id));
+    }
+    async link(_u: unknown, transactionId: string, subscriptionId: string): Promise<boolean> {
+      if (this.links.has(transactionId)) return false;
+      this.links.set(transactionId, subscriptionId);
+      return true;
+    }
+    async linkedCharges(): Promise<Map<string, LinkedCharge[]>> {
+      return new Map();
+    }
+  }
+
+  const expense = (id: string, merchantKey: string, at: string): UnlinkedCharge => ({
+    id, accountId: 'acc-1', merchantKey, kind: 'expense', direction: 'debit',
+    occurredAt: new Date(at), amount: Money.create('149.99', 'EGP'), original: null,
+  });
+
+  it('links the charges that pay a subscription, once', async () => {
+    const charges = new InMemoryCharges([
+      expense('t1', 'TEST STREAM COM', '2026-09-15T08:00:00Z'),
+      expense('t2', 'TEST CAFE', '2026-09-15T08:00:00Z'),
+    ]);
+    const matcher = new MatchSubscriptionCharges(subs, charges, clock);
+
+    expect(await matcher.execute(USER)).toEqual({ linked: 1 });
+    expect([...charges.links]).toEqual([['t1', 'sub-1']]);
+    // Nothing new the second time.
+    expect(await matcher.execute(USER)).toEqual({ linked: 0 });
   });
 });

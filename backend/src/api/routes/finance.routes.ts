@@ -60,6 +60,13 @@ export function financeRouter(container: Container): Router {
     async (req, res) => {
       const { id } = accountIdParams.parse(req.params);
       const statements = await container.importCardStatements.execute(req.auth!.userId, id, pdfBody(req.body));
+      // Best effort: the import is saved; a matching failure is fixed by
+      // the next run (or POST /subscriptions/match), never by failing this.
+      try {
+        await container.matchSubscriptionCharges.execute(req.auth!.userId);
+      } catch (error) {
+        console.error('[subscriptions] matching after a statement import failed', error);
+      }
       res.status(201).json({ statements });
     },
   );
@@ -121,6 +128,10 @@ export function financeRouter(container: Container): Router {
   router.get('/subscriptions', auth, async (req, res) => {
     const { status } = subscriptionListQuery.parse(req.query);
     res.json({ subscriptions: await container.listSubscriptions.execute(req.auth!.userId, status) });
+  });
+
+  router.post('/subscriptions/match', auth, async (req, res) => {
+    res.json(await container.matchSubscriptionCharges.execute(req.auth!.userId));
   });
 
   // Registered before /:id/:action so "summary" is never read as an id.

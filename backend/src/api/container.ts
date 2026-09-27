@@ -33,6 +33,7 @@ import {
   GetSubscriptionSummary,
   ListSubscriptions,
 } from '../application/subscriptions/subscriptions.js';
+import { MatchSubscriptionCharges } from '../application/subscriptions/match-charges.js';
 import type { AccessTokenService } from '../application/ports/security.js';
 import { getPrismaClient } from '../infrastructure/persistence/prisma-client.js';
 import { PrismaCardStatementRepository } from '../infrastructure/persistence/prisma-card-statement-repository.js';
@@ -50,6 +51,7 @@ import {
   PrismaAvailableBalanceRepository,
   PrismaAnalyticsQueries,
   PrismaCategoryRepository,
+  PrismaSubscriptionChargeRepository,
   PrismaSubscriptionRepository,
   PrismaTransactionRepository,
   PrismaUserSettingsRepository,
@@ -103,6 +105,7 @@ export interface Container {
   listSubscriptions: ListSubscriptions;
   changeSubscriptionStatus: ChangeSubscriptionStatus;
   getSubscriptionSummary: GetSubscriptionSummary;
+  matchSubscriptionCharges: MatchSubscriptionCharges;
 }
 
 export function buildContainer(
@@ -125,6 +128,7 @@ export function buildContainer(
   const transactions = new PrismaTransactionRepository(prisma);
   const settings = new PrismaUserSettingsRepository(prisma);
   const subscriptions = new PrismaSubscriptionRepository(prisma);
+  const subscriptionCharges = new PrismaSubscriptionChargeRepository(prisma);
   const analytics = new PrismaAnalyticsQueries(prisma);
   const merchantCategories = new PrismaMerchantCategoryRepository(prisma);
 
@@ -174,8 +178,9 @@ export function buildContainer(
     listTransactions: new ListTransactions(transactions),
     getCategoryAnalytics: new GetCategoryAnalytics(analytics, categories, clock),
     createSubscription: new CreateSubscription(subscriptions, categories, accounts, clock),
-    listSubscriptions: new ListSubscriptions(subscriptions, clock),
-    changeSubscriptionStatus: new ChangeSubscriptionStatus(subscriptions, clock),
+    listSubscriptions: new ListSubscriptions(subscriptions, subscriptionCharges, clock),
+    changeSubscriptionStatus: new ChangeSubscriptionStatus(subscriptions, subscriptionCharges, clock),
     getSubscriptionSummary: new GetSubscriptionSummary(subscriptions, clock),
+    matchSubscriptionCharges: new MatchSubscriptionCharges(subscriptions, subscriptionCharges, clock),
   };
 }
