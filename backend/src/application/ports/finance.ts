@@ -114,6 +114,7 @@ export interface UnlinkedCharge {
   id: string;
   accountId: string;
   merchantKey: string;
+  merchantRaw: string;
   kind: TransactionKind;
   direction: TransactionDirection;
   occurredAt: Date;
@@ -140,6 +141,13 @@ export interface SubscriptionChargeRepository {
   link(userId: UserId, transactionId: string, subscriptionId: string): Promise<boolean>;
   /** Per subscription id, its linked charges, oldest first. */
   linkedCharges(userId: UserId): Promise<Map<string, LinkedCharge[]>>;
+}
+
+/** Merchants you said are not a subscription: never suggested again. */
+export interface SuggestionDismissalRepository {
+  listDismissed(userId: UserId): Promise<Set<string>>;
+  /** Idempotent: dismissing twice is the same as once. */
+  dismiss(userId: UserId, merchantKey: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------

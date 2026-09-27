@@ -29,6 +29,7 @@ import type {
   ReportedAvailable,
   SubscriptionChargeRepository,
   SubscriptionRepository,
+  SuggestionDismissalRepository,
   TransactionFilter,
   TransactionRepository,
   TransactionView,
@@ -428,13 +429,14 @@ export class PrismaSubscriptionChargeRepository implements SubscriptionChargeRep
   async listUnlinkedCharges(userId: UserId, since: Date): Promise<UnlinkedCharge[]> {
     const rows = await this.prisma.transaction.findMany({
       where: { userId, subscriptionId: null, kind: 'expense', direction: 'debit', occurredAt: { gte: since } },
-      select: { ...CHARGE_FIELDS, accountId: true, merchantKey: true, kind: true, direction: true },
+      select: { ...CHARGE_FIELDS, accountId: true, merchantKey: true, merchantRaw: true, kind: true, direction: true },
       orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
     });
     return rows.map((r) => ({
       id: r.id,
       accountId: r.accountId,
       merchantKey: r.merchantKey,
+      merchantRaw: r.merchantRaw,
       kind: r.kind,
       direction: r.direction,
       occurredAt: r.occurredAt,
@@ -471,5 +473,31 @@ export class PrismaSubscriptionChargeRepository implements SubscriptionChargeRep
       bySubscription.set(row.subscriptionId!, list);
     }
     return bySubscription;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Subscription suggestion dismissals
+// ---------------------------------------------------------------------
+
+export class PrismaSuggestionDismissalRepository implements SuggestionDismissalRepository {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  async listDismissed(userId: UserId): Promise<Set<string>> {
+    const rows = await this.prisma.subscriptionSuggestionDismissal.findMany({
+      where: { userId },
+      select: { merchantKey: true },
+    });
+    return new Set(rows.map((r) => r.merchantKey));
+  }
+
+  async dismiss(userId: UserId, merchantKey: string): Promise<void> {
+    await this.prisma.subscriptionSuggestionDismissal.upsert({
+      where: {
+        userId_merchantKey: { userId, merchantKey },
+      },
+      create: { userId, merchantKey },
+      update: {},
+    });
   }
 }

@@ -118,6 +118,7 @@ model User {
   budgets        Budget[]
   subscriptions  Subscription[]
   cardStatements CardStatement[]
+  subscriptionSuggestionDismissals SubscriptionSuggestionDismissal[]
 
   @@map("users")
 }
@@ -666,4 +667,14 @@ model Subscription {
 
   @@index([userId, status])
   @@map("subscriptions")
+}
+
+model SubscriptionSuggestionDismissal {
+  userId      String   @map("user_id") @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  merchantKey String   @map("merchant_key")
+  dismissedAt DateTime @default(now()) @map("dismissed_at") @db.Timestamptz(3)
+
+  @@id([userId, merchantKey])
+  @@map("subscription_suggestion_dismissals")
 }
