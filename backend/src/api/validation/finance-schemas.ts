@@ -106,6 +106,10 @@ export const subscriptionActionParams = z.strictObject({
   action: z.enum(['pause', 'resume', 'cancel']),
 });
 
+export const dismissSubscriptionSuggestionBody = z.strictObject({
+  merchantKey: safeText({ max: 120 }),
+});
+
 // --- stored SMS ----------------------------------------------------------
 
 /** Two waiting halves of one transfer, chosen by the user. */

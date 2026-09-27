@@ -33,6 +33,10 @@ import {
   GetSubscriptionSummary,
   ListSubscriptions,
 } from '../application/subscriptions/subscriptions.js';
+import {
+  DismissSuggestion,
+  SuggestSubscriptions,
+} from '../application/subscriptions/suggest-subscriptions.js';
 import { MatchSubscriptionCharges } from '../application/subscriptions/match-charges.js';
 import type { AccessTokenService } from '../application/ports/security.js';
 import { getPrismaClient } from '../infrastructure/persistence/prisma-client.js';
@@ -53,6 +57,7 @@ import {
   PrismaCategoryRepository,
   PrismaSubscriptionChargeRepository,
   PrismaSubscriptionRepository,
+  PrismaSuggestionDismissalRepository,
   PrismaTransactionRepository,
   PrismaUserSettingsRepository,
 } from '../infrastructure/persistence/prisma-finance-repositories.js';
@@ -106,6 +111,8 @@ export interface Container {
   changeSubscriptionStatus: ChangeSubscriptionStatus;
   getSubscriptionSummary: GetSubscriptionSummary;
   matchSubscriptionCharges: MatchSubscriptionCharges;
+  suggestSubscriptions: SuggestSubscriptions;
+  dismissSuggestion: DismissSuggestion;
 }
 
 export function buildContainer(
@@ -129,6 +136,7 @@ export function buildContainer(
   const settings = new PrismaUserSettingsRepository(prisma);
   const subscriptions = new PrismaSubscriptionRepository(prisma);
   const subscriptionCharges = new PrismaSubscriptionChargeRepository(prisma);
+  const suggestionDismissals = new PrismaSuggestionDismissalRepository(prisma);
   const analytics = new PrismaAnalyticsQueries(prisma);
   const merchantCategories = new PrismaMerchantCategoryRepository(prisma);
 
@@ -182,5 +190,7 @@ export function buildContainer(
     changeSubscriptionStatus: new ChangeSubscriptionStatus(subscriptions, subscriptionCharges, clock),
     getSubscriptionSummary: new GetSubscriptionSummary(subscriptions, clock),
     matchSubscriptionCharges: new MatchSubscriptionCharges(subscriptions, subscriptionCharges, clock),
+    suggestSubscriptions: new SuggestSubscriptions(subscriptions, subscriptionCharges, suggestionDismissals, clock),
+    dismissSuggestion: new DismissSuggestion(suggestionDismissals),
   };
 }

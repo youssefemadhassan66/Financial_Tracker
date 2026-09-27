@@ -8,6 +8,7 @@ import {
   createAccountBody,
   createCategoryBody,
   createSubscriptionBody,
+  dismissSubscriptionSuggestionBody,
   listTransactionsQuery,
   recordTransactionBody,
   recordTransferBody,
@@ -134,7 +135,17 @@ export function financeRouter(container: Container): Router {
     res.json(await container.matchSubscriptionCharges.execute(req.auth!.userId));
   });
 
-  // Registered before /:id/:action so "summary" is never read as an id.
+  // Registered before /:id/:action so fixed paths are never read as an id.
+  router.get('/subscriptions/suggestions', auth, async (req, res) => {
+    res.json({ suggestions: await container.suggestSubscriptions.execute(req.auth!.userId) });
+  });
+
+  router.post('/subscriptions/suggestions/dismiss', auth, async (req, res) => {
+    const { merchantKey } = dismissSubscriptionSuggestionBody.parse(req.body);
+    await container.dismissSuggestion.execute(req.auth!.userId, merchantKey);
+    res.status(204).end();
+  });
+
   router.get('/subscriptions/summary', auth, async (req, res) => {
     const { days } = subscriptionSummaryQuery.parse(req.query);
     res.json(await container.getSubscriptionSummary.execute(req.auth!.userId, days));
@@ -142,7 +153,14 @@ export function financeRouter(container: Container): Router {
 
   router.post('/subscriptions', auth, async (req, res) => {
     const input = createSubscriptionBody.parse(req.body);
-    res.status(201).json({ subscription: await container.createSubscription.execute(req.auth!.userId, defined(input)) });
+    const subscription = await container.createSubscription.execute(req.auth!.userId, defined(input));
+    // Best effort: newly created subscription may match existing unlinked charges immediately.
+    try {
+      await container.matchSubscriptionCharges.execute(req.auth!.userId);
+    } catch (error) {
+      console.error('[subscriptions] matching after subscription creation failed', error);
+    }
+    res.status(201).json({ subscription });
   });
 
   router.post('/subscriptions/:id/:action', auth, async (req, res) => {

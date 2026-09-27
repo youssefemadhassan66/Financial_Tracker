@@ -239,7 +239,7 @@ describe('MatchSubscriptionCharges', () => {
   }
 
   const expense = (id: string, merchantKey: string, at: string): UnlinkedCharge => ({
-    id, accountId: 'acc-1', merchantKey, kind: 'expense', direction: 'debit',
+    id, accountId: 'acc-1', merchantKey, merchantRaw: merchantKey, kind: 'expense', direction: 'debit',
     occurredAt: new Date(at), amount: Money.create('149.99', 'EGP'), original: null,
   });
 
