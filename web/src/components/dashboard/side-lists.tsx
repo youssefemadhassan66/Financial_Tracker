@@ -1,6 +1,7 @@
-import { CalendarClock, CreditCard, Landmark, PiggyBank, Wallet } from 'lucide-react';
-import type { AccountDto, AccountType, SubscriptionSummary } from '@/lib/api/types';
+import { CalendarClock } from 'lucide-react';
+import type { AccountDto, SubscriptionSummary } from '@/lib/api/types';
 import { formatCalendarDay, formatInstantDay, formatMoney } from '@/lib/format';
+import { typeIcon, typeLabel } from '@/components/accounts/account-meta';
 
 /** Subscription charges due soon, soonest first. */
 export function UpcomingList({ summary }: { summary: SubscriptionSummary }) {
@@ -28,24 +29,6 @@ export function UpcomingList({ summary }: { summary: SubscriptionSummary }) {
     </ul>
   );
 }
-
-const typeLabel: Record<AccountType, string> = {
-  checking: 'Current account',
-  savings: 'Savings',
-  cash: 'Cash',
-  wallet: 'Wallet',
-  credit_card: 'Credit card',
-  brokerage: 'Brokerage',
-};
-
-const typeIcon: Record<AccountType, typeof Wallet> = {
-  checking: Landmark,
-  savings: PiggyBank,
-  cash: Wallet,
-  wallet: Wallet,
-  credit_card: CreditCard,
-  brokerage: Landmark,
-};
 
 /** Accounts with the balance the bank last reported by SMS (if any). */
 export function AccountsList({ accounts }: { accounts: AccountDto[] }) {
