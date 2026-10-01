@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { motion } from 'motion/react';
 import {
   ArrowLeftRight,
   LayoutDashboard,
@@ -11,6 +12,7 @@ import {
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
+import { DURATION_FEEDBACK, EASE_OUT_QUART } from '@/components/motion/motion-tokens';
 import { cn } from '@/lib/utils';
 
 export const navItems: { href: string; label: string; icon: LucideIcon }[] = [
@@ -39,15 +41,22 @@ export function SidebarNav() {
             href={href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex h-9 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
+              'relative flex h-9 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
               'outline-none focus-visible:ring-3 focus-visible:ring-sidebar-ring/50',
               active
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                ? 'text-sidebar-accent-foreground'
                 : 'text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
             )}
           >
-            <Icon aria-hidden="true" className="size-4 shrink-0" />
-            {label}
+            {active && (
+              <motion.div
+                layoutId="sidebar-active-indicator"
+                className="absolute inset-0 rounded-lg bg-sidebar-accent"
+                transition={{ duration: DURATION_FEEDBACK, ease: EASE_OUT_QUART }}
+              />
+            )}
+            <Icon aria-hidden="true" className="relative z-10 size-4 shrink-0" />
+            <span className="relative z-10">{label}</span>
           </Link>
         );
       })}
@@ -71,15 +80,22 @@ export function MobileNav() {
             href={href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors',
+              'relative flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors',
               'outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
               active
-                ? 'border-transparent bg-primary text-primary-foreground'
-                : 'bg-card text-muted-foreground hover:text-foreground',
+                ? 'border-transparent text-primary-foreground'
+                : 'border-border bg-card text-muted-foreground hover:text-foreground',
             )}
           >
-            <Icon aria-hidden="true" className="size-4" />
-            {label}
+            {active && (
+              <motion.div
+                layoutId="mobile-active-indicator"
+                className="absolute inset-0 rounded-full bg-primary"
+                transition={{ duration: DURATION_FEEDBACK, ease: EASE_OUT_QUART }}
+              />
+            )}
+            <Icon aria-hidden="true" className="relative z-10 size-4" />
+            <span className="relative z-10">{label}</span>
           </Link>
         );
       })}

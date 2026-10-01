@@ -26,6 +26,21 @@ A modern personal-finance web frontend built with Next.js 16 (App Router), React
    ```
    Open [http://localhost:3001](http://localhost:3001) in your browser.
 
+### Testing on a phone (same Wi-Fi)
+
+`localhost` on a phone means the phone itself, so use this PC's LAN address
+(`ipconfig` on Windows, e.g. `192.168.1.20`). In same-origin mode the browser
+only talks to port 3001 and Next forwards `/api/*` to the backend, so there is
+no CORS setup and only one port to allow through the firewall.
+
+```bash
+DEV_LAN_HOST=<your-lan-ip> API_PROXY_TARGET=http://localhost:3000 NEXT_PUBLIC_API_URL= npm run dev:lan
+```
+
+Then open `http://<your-lan-ip>:3001` on the phone (and on the PC, so both share
+one login cookie). If the phone cannot connect, allow Node.js through Windows
+Firewall for private networks.
+
 ## Verification & Quality Gates
 
 Run the verification commands to check type safety, code styling, test suites, and production build:

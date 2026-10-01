@@ -1,4 +1,6 @@
 import { TrendingDown, TrendingUp, Minus } from 'lucide-react';
+import { CountUp } from '@/components/motion/count-up';
+import { GrowBar } from '@/components/motion/grow-bar';
 import type { CurrencyAnalytics } from '@/lib/api/types';
 import { formatMoney, monthName } from '@/lib/format';
 
@@ -31,8 +33,8 @@ export function SpendingPanel({
         <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-semibold tracking-wide">{currency}</span>
       </div>
 
-      <p className="mt-2 font-heading text-[2rem] leading-none font-semibold tracking-tight">
-        {formatMoney(spending.total, currency)}
+      <p className="mt-2 font-sans text-[2rem] leading-none font-semibold tracking-tight">
+        <CountUp amount={spending.total} currency={currency} />
       </p>
 
       <Comparison
@@ -60,10 +62,7 @@ export function SpendingPanel({
                   </span>
                 </span>
               </div>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                {/* share is a percentage from the API, not money: safe to use as a width. */}
-                <div className="h-full rounded-full bg-chart-1" style={{ width: `${Math.max(c.share, 1.5)}%` }} />
-              </div>
+              <GrowBar share={c.share} className="mt-1.5" />
             </li>
           ))}
         </ul>

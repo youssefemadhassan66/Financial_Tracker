@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
+import { FadeIn } from '@/components/motion/fade-in';
 import { FormAlert, SubmitButton } from '@/components/auth/auth-form-parts';
 import { PasswordInput } from '@/components/auth/password-input';
 import { FormField } from '@/components/form-field';
@@ -57,7 +58,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div>
+    <FadeIn>
       <h1 className="font-heading text-[1.7rem] leading-tight font-semibold tracking-tight">Welcome back</h1>
       <p className="mt-1.5 text-sm text-muted-foreground">Log in to see what your bank sent today.</p>
 
@@ -106,6 +107,6 @@ export default function LoginPage() {
           Create an account
         </Link>
       </p>
-    </div>
+    </FadeIn>
   );
 }

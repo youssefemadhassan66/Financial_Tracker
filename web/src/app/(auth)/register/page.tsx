@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
+import { FadeIn } from '@/components/motion/fade-in';
 import { FormAlert, SubmitButton } from '@/components/auth/auth-form-parts';
 import { PasswordInput } from '@/components/auth/password-input';
 import { FormField } from '@/components/form-field';
@@ -77,7 +78,7 @@ export default function RegisterPage() {
   const passwordLength = password.length;
 
   return (
-    <div>
+    <FadeIn>
       <h1 className="font-heading text-[1.7rem] leading-tight font-semibold tracking-tight">Create your account</h1>
       <p className="mt-1.5 text-sm text-muted-foreground">Free, private, and set up in a minute.</p>
 
@@ -181,6 +182,6 @@ export default function RegisterPage() {
           Log in
         </Link>
       </p>
-    </div>
+    </FadeIn>
   );
 }

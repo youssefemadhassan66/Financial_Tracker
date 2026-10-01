@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { ChevronDown, KeyRound, MessageSquareText, ShieldCheck, Smartphone } from 'lucide-react';
+import { Reveal } from '@/components/motion/reveal';
+import { Stagger, StaggerItem } from '@/components/motion/stagger';
 import { Logo } from '@/components/brand/logo';
 import { HeaderActions, PrimaryCta } from '@/components/landing/auth-cta';
 import { CurrenciesVisual, StatementVisual, SubscriptionsVisual } from '@/components/landing/feature-visuals';
@@ -87,30 +89,38 @@ export default function HomePage() {
       <main className="flex-1">
         {/* Hero */}
         <section className="mx-auto grid max-w-6xl items-center gap-14 px-5 pt-12 pb-20 sm:px-8 lg:grid-cols-[1.05fr_1fr] lg:gap-16 lg:pt-20 lg:pb-28">
-          <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700">
-            <p className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
-              <MessageSquareText aria-hidden="true" className="size-3.5 text-accent-foreground" />
-              Made for banking in Egypt, in EGP and USD
-            </p>
-            <h1 className="mt-6 font-heading text-[clamp(2.5rem,5.5vw,4.25rem)] leading-[1.02] font-semibold tracking-[-0.03em] text-balance">
-              Your bank already texts you every purchase.
-            </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground text-pretty">
-              Finance turns those messages into a calm, clear picture of where your money goes. No typing, no
-              spreadsheets, no bank passwords.
-            </p>
-            <div className="mt-9 flex flex-wrap items-center gap-3">
-              <PrimaryCta />
-              <a
-                href="#how"
-                className="inline-flex h-12 items-center gap-1.5 rounded-xl px-4 text-base font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                See how it works
-                <ChevronDown aria-hidden="true" className="size-4" />
-              </a>
-            </div>
-          </div>
-          <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-6 motion-safe:duration-1000">
+          <Stagger>
+            <StaggerItem index={0}>
+              <p className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+                <MessageSquareText aria-hidden="true" className="size-3.5 text-accent-foreground" />
+                Made for banking in Egypt, in EGP and USD
+              </p>
+            </StaggerItem>
+            <StaggerItem index={1}>
+              <h1 className="mt-6 font-heading text-[clamp(2.5rem,5.5vw,4.25rem)] leading-[1.02] font-semibold tracking-[-0.03em] text-balance">
+                Your bank already texts you every purchase.
+              </h1>
+            </StaggerItem>
+            <StaggerItem index={2}>
+              <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground text-pretty">
+                Finance turns those messages into a calm, clear picture of where your money goes. No typing, no
+                spreadsheets, no bank passwords.
+              </p>
+            </StaggerItem>
+            <StaggerItem index={3}>
+              <div className="mt-9 flex flex-wrap items-center gap-3">
+                <PrimaryCta />
+                <a
+                  href="#how"
+                  className="inline-flex h-12 items-center gap-1.5 rounded-xl px-4 text-base font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  See how it works
+                  <ChevronDown aria-hidden="true" className="size-4" />
+                </a>
+              </div>
+            </StaggerItem>
+          </Stagger>
+          <div>
             <ProductPreview />
           </div>
         </section>
@@ -118,12 +128,14 @@ export default function HomePage() {
         {/* How it works */}
         <section id="how" aria-labelledby="how-heading" className="scroll-mt-20 border-y bg-sidebar">
           <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 lg:py-24">
-            <h2 id="how-heading" className="max-w-2xl font-heading text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight font-semibold tracking-tight text-balance">
-              Set it up once. After that, spending records itself.
-            </h2>
+            <Reveal>
+              <h2 id="how-heading" className="max-w-2xl font-heading text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight font-semibold tracking-tight text-balance">
+                Set it up once. After that, spending records itself.
+              </h2>
+            </Reveal>
             <ol className="mt-14 grid gap-10 md:grid-cols-3 md:gap-8">
               {steps.map((s, i) => (
-                <li key={s.title} className="relative md:pe-6">
+                <Reveal as="li" key={s.title} delay={i * 0.08} className="relative md:pe-6">
                   <span className="font-heading text-5xl font-semibold text-chart-1" aria-hidden="true">
                     {i + 1}
                   </span>
@@ -135,7 +147,7 @@ export default function HomePage() {
                     {s.title}
                   </h3>
                   <p className="mt-2 text-muted-foreground text-pretty">{s.body}</p>
-                </li>
+                </Reveal>
               ))}
             </ol>
           </div>
@@ -144,7 +156,7 @@ export default function HomePage() {
         {/* Features, alternating sides */}
         <section id="features" aria-label="Features" className="mx-auto max-w-6xl scroll-mt-20 space-y-24 px-5 py-24 sm:px-8 lg:space-y-32 lg:py-32">
           {features.map(({ id, title, body, Visual }, i) => (
-            <article key={id} className="grid items-center gap-10 lg:grid-cols-2 lg:gap-20">
+            <Reveal as="article" key={id} className="grid items-center gap-10 lg:grid-cols-2 lg:gap-20">
               <div className={i % 2 === 1 ? 'lg:order-2' : undefined}>
                 <h2 className="font-heading text-[clamp(1.7rem,3vw,2.4rem)] leading-tight font-semibold tracking-tight text-balance">
                   {title}
@@ -154,30 +166,30 @@ export default function HomePage() {
               <div className={i % 2 === 1 ? 'lg:order-1' : undefined}>
                 <Visual />
               </div>
-            </article>
+            </Reveal>
           ))}
         </section>
 
         {/* Privacy */}
         <section id="privacy" aria-labelledby="privacy-heading" className="scroll-mt-20 border-y bg-sidebar">
           <div className="mx-auto grid max-w-6xl gap-12 px-5 py-20 sm:px-8 lg:grid-cols-[1fr_1.4fr] lg:py-24">
-            <div>
+            <Reveal>
               <h2 id="privacy-heading" className="font-heading text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight font-semibold tracking-tight">
                 Private by design
               </h2>
               <p className="mt-4 max-w-md text-muted-foreground text-pretty">
                 Money is personal. The app is built so the most sensitive things never reach it in the first place.
               </p>
-            </div>
+            </Reveal>
             <ul className="space-y-8">
-              {privacy.map(({ icon: Icon, title, body }) => (
-                <li key={title} className="flex gap-4">
+              {privacy.map(({ icon: Icon, title, body }, i) => (
+                <Reveal as="li" key={title} delay={i * 0.08} className="flex gap-4">
                   <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-accent-foreground" />
                   <div>
                     <h3 className="font-semibold">{title}</h3>
                     <p className="mt-1 text-muted-foreground">{body}</p>
                   </div>
-                </li>
+                </Reveal>
               ))}
             </ul>
           </div>
@@ -185,18 +197,22 @@ export default function HomePage() {
 
         {/* FAQ */}
         <section id="faq" aria-labelledby="faq-heading" className="mx-auto max-w-3xl scroll-mt-20 px-5 py-24 sm:px-8">
-          <h2 id="faq-heading" className="font-heading text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight font-semibold tracking-tight">
-            Questions, answered
-          </h2>
+          <Reveal>
+            <h2 id="faq-heading" className="font-heading text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight font-semibold tracking-tight">
+              Questions, answered
+            </h2>
+          </Reveal>
           <div className="mt-10 divide-y border-y">
-            {faqs.map((f) => (
-              <details key={f.q} className="group py-5">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-md text-lg font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-                  {f.q}
-                  <ChevronDown aria-hidden="true" className="size-5 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
-                </summary>
-                <p className="mt-3 max-w-2xl text-muted-foreground text-pretty">{f.a}</p>
-              </details>
+            {faqs.map((f, i) => (
+              <Reveal key={f.q} delay={i * 0.05}>
+                <details className="group py-5">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-md text-lg font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+                    {f.q}
+                    <ChevronDown aria-hidden="true" className="size-5 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+                  </summary>
+                  <p className="mt-3 max-w-2xl text-muted-foreground text-pretty">{f.a}</p>
+                </details>
+              </Reveal>
             ))}
           </div>
         </section>

@@ -1,4 +1,10 @@
+'use client';
+
+import { motion } from 'motion/react';
 import { ArrowDown, ArrowUpRight, MessageSquareText } from 'lucide-react';
+import { CountUp } from '@/components/motion/count-up';
+import { GrowBar } from '@/components/motion/grow-bar';
+import { EASE_OUT_QUART } from '@/components/motion/motion-tokens';
 import { formatMoney } from '@/lib/format';
 
 // FAKE demo data only (card 1111, TEST merchants), per the project's data rules.
@@ -24,7 +30,9 @@ export function ProductPreview() {
           <span className="text-muted-foreground">Spent in September</span>
           <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-semibold">EGP</span>
         </div>
-        <p className="mt-2 font-heading text-4xl font-semibold tracking-tight">{formatMoney('8450.00', 'EGP')}</p>
+        <p className="mt-2 font-heading text-4xl font-semibold tracking-tight">
+          <CountUp amount="8450.00" currency="EGP" />
+        </p>
         <p className="mt-2 text-sm text-muted-foreground">
           <span className="font-medium text-foreground">7% more than August</span> (EGP 7,900.00)
         </p>
@@ -35,26 +43,40 @@ export function ProductPreview() {
                 <span className="font-medium">{c.name}</span>
                 <span className="tabular-nums">{formatMoney(c.total, 'EGP')}</span>
               </div>
-              <div className="mt-1.5 h-1.5 rounded-full bg-muted">
-                <div className="h-full rounded-full bg-chart-1" style={{ width: `${c.share}%` }} />
-              </div>
+              <GrowBar share={c.share} className="mt-1.5" />
             </li>
           ))}
         </ul>
       </div>
 
-      {/* The SMS turning into a transaction */}
+      {/* The SMS turning into a transaction: sequenced once, ~1.6s total */}
       <div className="relative -mt-6 ms-6 me-2 space-y-2 sm:ms-10 lg:-ms-10 lg:me-10">
-        <div className="flex max-w-[19rem] gap-2.5 rounded-2xl rounded-bl-md border bg-background p-3.5 text-[0.8rem] leading-snug shadow-lg">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.75, ease: EASE_OUT_QUART }}
+          className="flex max-w-[19rem] gap-2.5 rounded-2xl rounded-bl-md border bg-background p-3.5 text-[0.8rem] leading-snug shadow-lg"
+        >
           <MessageSquareText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p>
             <span className="font-semibold">TESTBANK</span>
             <br />
             Card ending 1111 was charged EGP 149.99 at TEST STREAM.
           </p>
-        </div>
-        <ArrowDown className="ms-8 size-4 text-muted-foreground" />
-        <div className="flex items-center gap-3 rounded-2xl border bg-card p-3.5 shadow-lg">
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2, delay: 1.05, ease: EASE_OUT_QUART }}
+        >
+          <ArrowDown className="ms-8 size-4 text-muted-foreground" />
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 1.25, ease: EASE_OUT_QUART }}
+          className="flex items-center gap-3 rounded-2xl border bg-card p-3.5 shadow-lg"
+        >
           <span className="grid size-9 place-items-center rounded-full bg-accent text-accent-foreground">
             <ArrowUpRight className="size-4" />
           </span>
@@ -63,7 +85,7 @@ export function ProductPreview() {
             <p className="text-xs text-muted-foreground">Subscriptions · Test Visa · just now</p>
           </div>
           <p className="text-sm font-medium tabular-nums">{formatMoney('149.99', 'EGP', '-')}</p>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

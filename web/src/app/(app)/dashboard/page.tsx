@@ -2,6 +2,8 @@
 
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { FileText, MessageSquareText, Wallet, type LucideIcon } from 'lucide-react';
+import { FadeIn } from '@/components/motion/fade-in';
+import { Stagger, StaggerItem } from '@/components/motion/stagger';
 import { DashboardSection, RowsSkeleton, SectionError } from '@/components/dashboard/section';
 import { AccountsList, UpcomingList } from '@/components/dashboard/side-lists';
 import { SpendingPanel } from '@/components/dashboard/spending-panel';
@@ -68,11 +70,13 @@ export default function DashboardPage() {
                   Nothing yet. Transactions appear here as your bank’s messages arrive.
                 </p>
               ) : (
-                <ul className="divide-y border-t">
-                  {recent.data.map((tx) => (
-                    <TransactionRow key={tx.id} tx={tx} />
-                  ))}
-                </ul>
+                <FadeIn>
+                  <ul className="divide-y border-t">
+                    {recent.data.map((tx, i) => (
+                      <TransactionRow key={tx.id} tx={tx} staggerIndex={i} />
+                    ))}
+                  </ul>
+                </FadeIn>
               )}
             </DashboardSection>
 
@@ -94,7 +98,9 @@ export default function DashboardPage() {
                 ) : summary.isError ? (
                   <SectionError what="upcoming charges" onRetry={() => void summary.refetch()} />
                 ) : (
-                  <UpcomingList summary={summary.data} />
+                  <FadeIn>
+                    <UpcomingList summary={summary.data} />
+                  </FadeIn>
                 )}
               </DashboardSection>
 
@@ -104,7 +110,9 @@ export default function DashboardPage() {
                 ) : accounts.isError ? (
                   <SectionError what="your accounts" onRetry={() => void accounts.refetch()} />
                 ) : (
-                  <AccountsList accounts={accounts.data} />
+                  <FadeIn>
+                    <AccountsList accounts={accounts.data} />
+                  </FadeIn>
                 )}
               </DashboardSection>
             </div>
@@ -143,17 +151,23 @@ function SpendingOverview({ query }: { query: UseQueryResult<CategoryAnalytics> 
   const { currencies, period, previousPeriod } = query.data;
   if (currencies.length === 0) {
     return (
-      <DashboardSection title="Spending" description="Nothing spent yet this month. Enjoy the quiet.">
-        <div className="pb-2" />
-      </DashboardSection>
+      <FadeIn>
+        <DashboardSection title="Spending" description="Nothing spent yet this month. Enjoy the quiet.">
+          <div className="pb-2" />
+        </DashboardSection>
+      </FadeIn>
     );
   }
   return (
-    <div className={currencies.length > 1 ? 'grid gap-6 md:grid-cols-2' : 'grid gap-6'}>
-      {currencies.map((c) => (
-        <SpendingPanel key={c.currency} data={c} periodFrom={period.from} previousFrom={previousPeriod.from} />
-      ))}
-    </div>
+    <FadeIn>
+      <Stagger className={currencies.length > 1 ? 'grid gap-6 md:grid-cols-2' : 'grid gap-6'}>
+        {currencies.map((c, i) => (
+          <StaggerItem key={c.currency} index={i}>
+            <SpendingPanel data={c} periodFrom={period.from} previousFrom={previousPeriod.from} />
+          </StaggerItem>
+        ))}
+      </Stagger>
+    </FadeIn>
   );
 }
 
