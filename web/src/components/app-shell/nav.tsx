@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { motion } from 'motion/react';
 import {
   ArrowLeftRight,
+  ChartColumn,
   LayoutDashboard,
   MessageSquareText,
   Repeat,
@@ -17,6 +18,7 @@ import { cn } from '@/lib/utils';
 
 export const navItems: { href: string; label: string; icon: LucideIcon }[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/analytics', label: 'Analytics', icon: ChartColumn },
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/accounts', label: 'Accounts', icon: Wallet },
   { href: '/subscriptions', label: 'Subscriptions', icon: Repeat },

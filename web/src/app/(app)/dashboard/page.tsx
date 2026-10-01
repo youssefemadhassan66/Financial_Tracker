@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import { FileText, MessageSquareText, Wallet, type LucideIcon } from 'lucide-react';
+import { ArrowRight, FileText, MessageSquareText, Wallet, type LucideIcon } from 'lucide-react';
 import { FadeIn } from '@/components/motion/fade-in';
 import { Stagger, StaggerItem } from '@/components/motion/stagger';
 import { DashboardSection, RowsSkeleton, SectionError } from '@/components/dashboard/section';
@@ -126,24 +127,36 @@ export default function DashboardPage() {
 function SpendingOverview({ query }: { query: UseQueryResult<CategoryAnalytics> }) {
   if (query.isPending) {
     return (
-      <div className="grid gap-6 md:grid-cols-2" aria-hidden="true">
-        {[0, 1].map((i) => (
-          <div key={i} className="h-80 rounded-2xl border bg-card p-6">
-            <div className="h-4 w-32 rounded bg-muted motion-safe:animate-pulse" />
-            <div className="mt-4 h-8 w-48 rounded bg-muted motion-safe:animate-pulse" />
-            <div className="mt-8 space-y-4">
-              {[0, 1, 2, 3].map((j) => (
-                <div key={j} className="h-6 rounded bg-muted motion-safe:animate-pulse" />
-              ))}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">Spending</h2>
+          <Link
+            href="/analytics"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md text-sm font-medium text-accent-foreground outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            See analytics
+            <ArrowRight aria-hidden="true" className="size-3.5" />
+          </Link>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2" aria-hidden="true">
+          {[0, 1].map((i) => (
+            <div key={i} className="h-80 rounded-2xl border bg-card p-6">
+              <div className="h-4 w-32 rounded bg-muted motion-safe:animate-pulse" />
+              <div className="mt-4 h-8 w-48 rounded bg-muted motion-safe:animate-pulse" />
+              <div className="mt-8 space-y-4">
+                {[0, 1, 2, 3].map((j) => (
+                  <div key={j} className="h-6 rounded bg-muted motion-safe:animate-pulse" />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     );
   }
   if (query.isError) {
     return (
-      <DashboardSection title="Spending">
+      <DashboardSection title="Spending" href="/analytics" hrefLabel="See analytics">
         <SectionError what="your spending summary" onRetry={() => void query.refetch()} />
       </DashboardSection>
     );
@@ -152,7 +165,12 @@ function SpendingOverview({ query }: { query: UseQueryResult<CategoryAnalytics> 
   if (currencies.length === 0) {
     return (
       <FadeIn>
-        <DashboardSection title="Spending" description="Nothing spent yet this month. Enjoy the quiet.">
+        <DashboardSection
+          title="Spending"
+          description="Nothing spent yet this month. Enjoy the quiet."
+          href="/analytics"
+          hrefLabel="See analytics"
+        >
           <div className="pb-2" />
         </DashboardSection>
       </FadeIn>
@@ -160,13 +178,25 @@ function SpendingOverview({ query }: { query: UseQueryResult<CategoryAnalytics> 
   }
   return (
     <FadeIn>
-      <Stagger className={currencies.length > 1 ? 'grid gap-6 md:grid-cols-2' : 'grid gap-6'}>
-        {currencies.map((c, i) => (
-          <StaggerItem key={c.currency} index={i}>
-            <SpendingPanel data={c} periodFrom={period.from} previousFrom={previousPeriod.from} />
-          </StaggerItem>
-        ))}
-      </Stagger>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">Spending</h2>
+          <Link
+            href="/analytics"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md text-sm font-medium text-accent-foreground outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            See analytics
+            <ArrowRight aria-hidden="true" className="size-3.5" />
+          </Link>
+        </div>
+        <Stagger className={currencies.length > 1 ? 'grid gap-6 md:grid-cols-2' : 'grid gap-6'}>
+          {currencies.map((c, i) => (
+            <StaggerItem key={c.currency} index={i}>
+              <SpendingPanel data={c} periodFrom={period.from} previousFrom={previousPeriod.from} />
+            </StaggerItem>
+          ))}
+        </Stagger>
+      </div>
     </FadeIn>
   );
 }
