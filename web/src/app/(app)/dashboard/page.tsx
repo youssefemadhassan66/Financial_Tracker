@@ -10,6 +10,8 @@ import { AccountsList, UpcomingList } from '@/components/dashboard/side-lists';
 import { SpendingPanel } from '@/components/dashboard/spending-panel';
 import { TransactionRow } from '@/components/transactions/transaction-row';
 import { PageHeader } from '@/components/page-header';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   accountsQuery,
   categoryAnalyticsQuery,
@@ -201,16 +203,25 @@ function SpendingOverview({ query }: { query: UseQueryResult<CategoryAnalytics> 
   );
 }
 
-const setupSteps: { icon: LucideIcon; title: string; body: string }[] = [
+// Each step links to the page where it happens. A step without an action is not
+// built yet and says so honestly.
+const setupSteps: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+  action?: { href: string; label: string };
+}[] = [
   {
     icon: Wallet,
     title: 'Add your accounts',
     body: 'Cards and bank accounts, with the last 4 digits your bank uses in its messages.',
+    action: { href: '/accounts', label: 'Add an account' },
   },
   {
     icon: MessageSquareText,
     title: 'Connect your phone',
     body: 'A small forwarder app sends bank SMS here, so spending records itself.',
+    action: { href: '/settings', label: 'Connect' },
   },
   {
     icon: FileText,
@@ -232,8 +243,8 @@ function GettingStarted() {
         </p>
       </div>
       <ol className="divide-y">
-        {setupSteps.map(({ icon: Icon, title, body }, i) => (
-          <li key={title} className="flex items-start gap-4 px-5 py-4 sm:px-6">
+        {setupSteps.map(({ icon: Icon, title, body, action }, i) => (
+          <li key={title} className="flex flex-wrap items-start gap-4 px-5 py-4 sm:flex-nowrap sm:px-6">
             <span
               aria-hidden="true"
               className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent text-accent-foreground"
@@ -247,12 +258,29 @@ function GettingStarted() {
               </p>
               <p className="mt-0.5 text-sm text-muted-foreground">{body}</p>
             </div>
-            <span className="mt-1 shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-              Soon
-            </span>
+            {action ? (
+              <Link
+                href={action.href}
+                className={cn(buttonVariants({ size: 'sm' }), 'ms-13 h-9 shrink-0 gap-1.5 px-3 sm:ms-0')}
+              >
+                {action.label}
+                <ArrowRight aria-hidden="true" className="size-3.5" />
+              </Link>
+            ) : (
+              <span className="mt-1 shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                Coming soon
+              </span>
+            )}
           </li>
         ))}
       </ol>
+      <p className="border-t px-5 py-3 text-sm text-muted-foreground sm:px-6">
+        Want to try it right away?{' '}
+        <Link href="/transactions" className="font-medium text-accent-foreground underline-offset-4 hover:underline">
+          Add a transaction by hand
+        </Link>
+        .
+      </p>
     </section>
   );
 }
