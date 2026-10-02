@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FileText, MessageSquareText, Repeat } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
+import { Stagger, StaggerItem } from '@/components/motion/stagger';
 import { useAuth } from '@/providers/auth-provider';
 
 const steps = [
@@ -44,9 +45,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <h2 className="font-heading text-[2.1rem] leading-[1.15] font-semibold tracking-tight text-balance">
             Know where your money goes, without typing a single expense.
           </h2>
-          <ul className="mt-10 space-y-7">
-            {steps.map(({ icon: Icon, title, body }) => (
-              <li key={title} className="flex gap-4">
+          <Stagger as="ul" className="mt-10 space-y-7">
+            {steps.map(({ icon: Icon, title, body }, i) => (
+              <StaggerItem as="li" key={title} index={i} className="flex gap-4">
                 <span
                   aria-hidden="true"
                   className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent text-accent-foreground"
@@ -57,9 +58,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
                   <p className="font-medium">{title}</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">{body}</p>
                 </div>
-              </li>
+              </StaggerItem>
             ))}
-          </ul>
+          </Stagger>
         </div>
         <p className="text-sm text-muted-foreground">EGP and USD are always kept apart, never added together.</p>
       </aside>

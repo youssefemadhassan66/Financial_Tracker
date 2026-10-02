@@ -1,4 +1,9 @@
+'use client';
+
+import { motion } from 'motion/react';
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight } from 'lucide-react';
+import { DURATION_HIGHLIGHT, EASE_OUT_QUART } from '@/components/motion/motion-tokens';
+import { staggerItemVariants } from '@/components/motion/stagger';
 import type { TransactionView } from '@/lib/api/types';
 import { formatInstantDay, formatMoney } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -10,9 +15,13 @@ import { cn } from '@/lib/utils';
 export function TransactionRow({
   tx,
   showDate = true,
+  isNew = false,
+  staggerIndex,
 }: {
   tx: TransactionView;
   showDate?: boolean;
+  isNew?: boolean;
+  staggerIndex?: number;
 }) {
   const isTransfer = tx.kind === 'transfer' || tx.transferGroupId !== null;
   const moneyIn = tx.direction === 'credit';
@@ -23,7 +32,22 @@ export function TransactionRow({
     .join(' · ');
 
   return (
-    <li className="flex items-center gap-3 px-5 py-3 sm:px-6">
+    <motion.li
+      custom={staggerIndex}
+      variants={staggerIndex !== undefined ? staggerItemVariants : undefined}
+      initial={staggerIndex !== undefined ? 'hidden' : undefined}
+      animate={staggerIndex !== undefined ? 'visible' : undefined}
+      className="relative flex items-center gap-3 px-5 py-3 sm:px-6"
+    >
+      {isNew && (
+        <motion.div
+          aria-hidden="true"
+          initial={{ opacity: 1 }}
+          animate={{ opacity: 0 }}
+          transition={{ duration: DURATION_HIGHLIGHT, ease: EASE_OUT_QUART }}
+          className="pointer-events-none absolute inset-0 bg-accent"
+        />
+      )}
       <span
         aria-hidden="true"
         className={cn(
@@ -52,6 +76,6 @@ export function TransactionRow({
           </p>
         )}
       </div>
-    </li>
+    </motion.li>
   );
 }

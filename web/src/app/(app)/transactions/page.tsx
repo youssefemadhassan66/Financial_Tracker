@@ -26,7 +26,11 @@ import {
 import { accountsQuery, categoriesQuery, transactionsInfiniteQuery } from '@/lib/api/finance';
 import type { TransactionView } from '@/lib/api/types';
 import { getCairoDayHeading, toCairoDateString } from '@/lib/cairo-date';
+import { addedIds } from '@/lib/new-rows';
 import { parseTransactionFilters } from '@/lib/transaction-filters';
+
+const EMPTY_IDS: ReadonlySet<string> = new Set();
+import { toast } from 'sonner';
 
 interface DayGroup {
   day: string;
@@ -42,6 +46,7 @@ function TransactionsContent() {
   const [addOpen, setAddOpen] = React.useState(false);
   const [moveOpen, setMoveOpen] = React.useState(false);
   const [announcement, setAnnouncement] = React.useState<string | null>(null);
+
 
   const announce = React.useCallback((msg: string) => {
     setAnnouncement(msg);
@@ -120,6 +125,27 @@ function TransactionsContent() {
     return data?.pages.flatMap((page) => page) ?? [];
   }, [data]);
 
+  // Ids on screen when a sheet opened. The sheets report success only after the
+  // list has refetched, so the "what is new" comparison must use this earlier
+  // snapshot. Only the first page is compared, so "Load more" never lights up.
+  const [idsWhenOpened, setIdsWhenOpened] = React.useState<ReadonlySet<string> | null>(null);
+  const [highlightSince, setHighlightSince] = React.useState<ReadonlySet<string> | null>(null);
+  const newlyAddedIds = React.useMemo(
+    () => (highlightSince ? addedIds(highlightSince, data?.pages[0] ?? []) : EMPTY_IDS),
+    [highlightSince, data],
+  );
+  React.useEffect(() => {
+    if (!highlightSince) return;
+    const t = setTimeout(() => setHighlightSince(null), 2000);
+    return () => clearTimeout(t);
+  }, [highlightSince]);
+
+  const openSheet = (which: 'add' | 'move') => {
+    setIdsWhenOpened(new Set(allTransactions.map((tx) => tx.id)));
+    if (which === 'add') setAddOpen(true);
+    else setMoveOpen(true);
+  };
+
   const groupedTransactions = React.useMemo(() => {
     const groups: DayGroup[] = [];
     for (const tx of allTransactions) {
@@ -162,12 +188,12 @@ function TransactionsContent() {
         description="Every expense, income and transfer, newest first."
         actions={
           <>
-            <Button onClick={() => setAddOpen(true)} className="h-11 sm:h-10">
+            <Button onClick={() => openSheet('add')} className="h-11 sm:h-10">
               Add transaction
             </Button>
             <Button
               variant="outline"
-              onClick={() => setMoveOpen(true)}
+              onClick={() => openSheet('move')}
               className="h-11 sm:h-10"
             >
               Move money
@@ -322,7 +348,7 @@ function TransactionsContent() {
             icon={ArrowLeftRight}
             title="No transactions yet"
             action={
-              <Button onClick={() => setAddOpen(true)} className="h-11 sm:h-10">
+              <Button onClick={() => openSheet('add')} className="h-11 sm:h-10">
                 Add transaction
               </Button>
             }
@@ -332,18 +358,32 @@ function TransactionsContent() {
         )
       ) : (
         <div className="space-y-6">
-          {groupedTransactions.map((group) => (
-            <div key={group.day} className="space-y-2">
-              <h3 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {group.heading}
-              </h3>
-              <ul className="divide-y rounded-2xl border bg-card">
-                {group.transactions.map((tx) => (
-                  <TransactionRow key={tx.id} tx={tx} showDate={false} />
-                ))}
-              </ul>
-            </div>
-          ))}
+          {(() => {
+            let runningIndex = 0;
+            return groupedTransactions.map((group) => (
+              <div key={group.day} className="space-y-2">
+                <h3 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {group.heading}
+                </h3>
+                <ul className="divide-y rounded-2xl border bg-card">
+                  {group.transactions.map((tx) => {
+                    const idx = runningIndex++;
+                    const staggerIndex = idx < 10 ? idx : undefined;
+                    const isNew = newlyAddedIds.has(tx.id);
+                    return (
+                      <TransactionRow
+                        key={tx.id}
+                        tx={tx}
+                        showDate={false}
+                        isNew={isNew}
+                        staggerIndex={staggerIndex}
+                      />
+                    );
+                  })}
+                </ul>
+              </div>
+            ));
+          })()}
 
           {hasNextPage && (
             <div className="flex justify-center pt-2">
@@ -370,13 +410,21 @@ function TransactionsContent() {
       <AddTransactionSheet
         open={addOpen}
         onOpenChange={setAddOpen}
-        onSuccess={() => announce('Transaction added')}
+        onSuccess={() => {
+          setHighlightSince(idsWhenOpened);
+          announce('Transaction added');
+          toast.success('Transaction added');
+        }}
       />
 
       <MoveMoneySheet
         open={moveOpen}
         onOpenChange={setMoveOpen}
-        onSuccess={() => announce('Transfer added')}
+        onSuccess={() => {
+          setHighlightSince(idsWhenOpened);
+          announce('Transfer added');
+          toast.success('Transfer added');
+        }}
       />
     </div>
   );

@@ -73,6 +73,19 @@ export const categoryAnalyticsQuery = {
   queryFn: () => apiFetch<CategoryAnalytics>('/api/analytics/categories'),
 };
 
+export function categoryAnalyticsRangeQuery(from?: string, to?: string) {
+  return {
+    queryKey: ['analytics', 'categories', { from: from ?? null, to: to ?? null }] as const,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const qs = params.toString();
+      return apiFetch<CategoryAnalytics>(`/api/analytics/categories${qs ? `?${qs}` : ''}`);
+    },
+  };
+}
+
 export function subscriptionSummaryQuery(days: number) {
   return {
     queryKey: ['subscriptions', 'summary', { days }] as const,

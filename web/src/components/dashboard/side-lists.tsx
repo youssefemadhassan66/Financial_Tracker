@@ -1,4 +1,5 @@
 import { CalendarClock } from 'lucide-react';
+import { Stagger, StaggerItem } from '@/components/motion/stagger';
 import type { AccountDto, SubscriptionSummary } from '@/lib/api/types';
 import { formatCalendarDay, formatInstantDay, formatMoney } from '@/lib/format';
 import { typeIcon, typeLabel } from '@/components/accounts/account-meta';
@@ -13,9 +14,14 @@ export function UpcomingList({ summary }: { summary: SubscriptionSummary }) {
     );
   }
   return (
-    <ul className="divide-y border-t">
-      {summary.upcoming.map((u) => (
-        <li key={`${u.subscriptionId}-${u.date}`} className="flex items-center gap-3 px-5 py-3 sm:px-6">
+    <Stagger as="ul" className="divide-y border-t">
+      {summary.upcoming.map((u, i) => (
+        <StaggerItem
+          as="li"
+          key={`${u.subscriptionId}-${u.date}`}
+          index={i}
+          className="flex items-center gap-3 px-5 py-3 sm:px-6"
+        >
           <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
             <CalendarClock className="size-4" />
           </span>
@@ -24,9 +30,9 @@ export function UpcomingList({ summary }: { summary: SubscriptionSummary }) {
             <p className="text-xs text-muted-foreground">{formatCalendarDay(u.date)}</p>
           </div>
           <p className="shrink-0 text-sm font-medium tabular-nums">{formatMoney(u.amount, u.currency)}</p>
-        </li>
+        </StaggerItem>
       ))}
-    </ul>
+    </Stagger>
   );
 }
 
@@ -37,12 +43,17 @@ export function AccountsList({ accounts }: { accounts: AccountDto[] }) {
     return <p className="px-5 pb-5 text-sm text-muted-foreground sm:px-6">No accounts yet.</p>;
   }
   return (
-    <ul className="divide-y border-t">
-      {visible.map((a) => {
+    <Stagger as="ul" className="divide-y border-t">
+      {visible.map((a, i) => {
         const Icon = typeIcon[a.type];
         const digits = a.last4s.length > 0 ? ` · ${a.last4s.map((d) => `•• ${d}`).join(', ')}` : '';
         return (
-          <li key={a.id} className="flex items-center gap-3 px-5 py-3 sm:px-6">
+          <StaggerItem
+            as="li"
+            key={a.id}
+            index={i}
+            className="flex items-center gap-3 px-5 py-3 sm:px-6"
+          >
             <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
               <Icon className="size-4" />
             </span>
@@ -69,9 +80,9 @@ export function AccountsList({ accounts }: { accounts: AccountDto[] }) {
                 </p>
               )}
             </div>
-          </li>
+          </StaggerItem>
         );
       })}
-    </ul>
+    </Stagger>
   );
 }

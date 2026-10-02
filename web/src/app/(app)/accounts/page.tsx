@@ -3,7 +3,11 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { motion } from 'motion/react';
+import { toast } from 'sonner';
 import { Wallet, X } from 'lucide-react';
+import { DURATION_HIGHLIGHT, EASE_OUT_QUART } from '@/components/motion/motion-tokens';
+import { staggerItemVariants } from '@/components/motion/stagger';
 import { typeIcon, typeLabel } from '@/components/accounts/account-meta';
 import { AddAccountSheet } from '@/components/accounts/add-account-sheet';
 import { EditAccountSheet } from '@/components/accounts/edit-account-sheet';
@@ -33,6 +37,25 @@ export default function AccountsPage() {
     return (accounts ?? []).filter((a) => !a.archived);
   }, [accounts]);
 
+  const [prevAccounts, setPrevAccounts] = React.useState<AccountDto[]>([]);
+  const [pendingAccountMutation, setPendingAccountMutation] = React.useState(false);
+  const [newlyAddedAccountIds, setNewlyAddedAccountIds] = React.useState<ReadonlySet<string>>(new Set());
+
+  if (visibleAccounts !== prevAccounts) {
+    setPrevAccounts(visibleAccounts);
+    if (pendingAccountMutation) {
+      setPendingAccountMutation(false);
+      const prevIds = new Set(prevAccounts.map((a) => a.id));
+      const added = new Set<string>();
+      for (const a of visibleAccounts) {
+        if (!prevIds.has(a.id)) {
+          added.add(a.id);
+        }
+      }
+      setNewlyAddedAccountIds(added);
+    }
+  }
+
   const egpAccounts = React.useMemo(() => {
     return visibleAccounts.filter((a) => a.currency === 'EGP');
   }, [visibleAccounts]);
@@ -41,7 +64,7 @@ export default function AccountsPage() {
     return visibleAccounts.filter((a) => a.currency === 'USD');
   }, [visibleAccounts]);
 
-  const renderAccountGroup = (title: string, currencyAccounts: AccountDto[]) => {
+  const renderAccountGroup = (title: string, currencyAccounts: AccountDto[], startIndex: number) => {
     if (currencyAccounts.length === 0) return null;
 
     return (
@@ -57,13 +80,30 @@ export default function AccountsPage() {
           </span>
         </div>
         <ul className="divide-y">
-          {currencyAccounts.map((account) => {
+          {currencyAccounts.map((account, i) => {
             const Icon = typeIcon[account.type];
+            const globalIndex = startIndex + i;
+            const staggerIndex = globalIndex < 10 ? globalIndex : undefined;
+            const isNew = newlyAddedAccountIds.has(account.id);
+
             return (
-              <li
+              <motion.li
                 key={account.id}
-                className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+                custom={staggerIndex}
+                variants={staggerIndex !== undefined ? staggerItemVariants : undefined}
+                initial={staggerIndex !== undefined ? 'hidden' : undefined}
+                animate={staggerIndex !== undefined ? 'visible' : undefined}
+                className="relative flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
               >
+                {isNew && (
+                  <motion.div
+                    aria-hidden="true"
+                    initial={{ opacity: 1 }}
+                    animate={{ opacity: 0 }}
+                    transition={{ duration: DURATION_HIGHLIGHT, ease: EASE_OUT_QUART }}
+                    className="pointer-events-none absolute inset-0 bg-accent"
+                  />
+                )}
                 <div className="flex items-start gap-3 min-w-0">
                   <span
                     aria-hidden="true"
@@ -127,7 +167,7 @@ export default function AccountsPage() {
                     Edit
                   </Button>
                 </div>
-              </li>
+              </motion.li>
             );
           })}
         </ul>
@@ -198,15 +238,19 @@ export default function AccountsPage() {
         </EmptyState>
       ) : (
         <div className="space-y-6">
-          {renderAccountGroup('Egyptian pound accounts', egpAccounts)}
-          {renderAccountGroup('US dollar accounts', usdAccounts)}
+          {renderAccountGroup('Egyptian pound accounts', egpAccounts, 0)}
+          {renderAccountGroup('US dollar accounts', usdAccounts, egpAccounts.length)}
         </div>
       )}
 
       <AddAccountSheet
         open={addOpen}
         onOpenChange={setAddOpen}
-        onSuccess={() => announce('Account created')}
+        onSuccess={() => {
+          setPendingAccountMutation(true);
+          announce('Account created');
+          toast.success('Account added');
+        }}
       />
 
       <EditAccountSheet
@@ -216,7 +260,11 @@ export default function AccountsPage() {
           if (!open) setEditingAccount(null);
         }}
         onSuccess={(digitsAdded) => {
+          if (editingAccount) {
+            setNewlyAddedAccountIds(new Set([editingAccount.id]));
+          }
           announce('Account updated');
+          toast.success('Account updated');
           if (digitsAdded) {
             setSmsNotice(true);
           }
