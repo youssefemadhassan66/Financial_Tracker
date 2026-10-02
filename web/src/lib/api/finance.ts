@@ -3,9 +3,16 @@ import type {
   AccountDto,
   CategoryAnalytics,
   CategoryRecord,
+  DeviceDto,
   SubscriptionSummary,
   TransactionView,
 } from './types';
+
+/** Phones that can send bank SMS. Holds only names and dates, never a key. */
+export const devicesQuery = {
+  queryKey: ['devices'] as const,
+  queryFn: () => apiFetch<{ devices: DeviceDto[] }>('/api/devices').then((r) => r.devices),
+};
 
 /**
  * Read endpoints plus their TanStack Query keys. Keys start with the resource

@@ -16,13 +16,14 @@ import {
 import { DURATION_FEEDBACK, EASE_OUT_QUART } from '@/components/motion/motion-tokens';
 import { cn } from '@/lib/utils';
 
-export const navItems: { href: string; label: string; icon: LucideIcon }[] = [
+// `soon`: the page exists but its feature is not built yet; the tag sets expectations.
+export const navItems: { href: string; label: string; icon: LucideIcon; soon?: boolean }[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/analytics', label: 'Analytics', icon: ChartColumn },
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/accounts', label: 'Accounts', icon: Wallet },
-  { href: '/subscriptions', label: 'Subscriptions', icon: Repeat },
-  { href: '/sms', label: 'SMS inbox', icon: MessageSquareText },
+  { href: '/subscriptions', label: 'Subscriptions', icon: Repeat, soon: true },
+  { href: '/sms', label: 'SMS inbox', icon: MessageSquareText, soon: true },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -35,7 +36,7 @@ export function SidebarNav() {
   const pathname = usePathname();
   return (
     <nav aria-label="Main" className="flex flex-col gap-0.5">
-      {navItems.map(({ href, label, icon: Icon }) => {
+      {navItems.map(({ href, label, icon: Icon, soon }) => {
         const active = isActive(pathname, href);
         return (
           <Link
@@ -59,6 +60,11 @@ export function SidebarNav() {
             )}
             <Icon aria-hidden="true" className="relative z-10 size-4 shrink-0" />
             <span className="relative z-10">{label}</span>
+            {soon && (
+              <span className="relative z-10 ms-auto rounded-full bg-muted px-1.5 py-px text-[0.65rem] font-medium text-muted-foreground">
+                Soon
+              </span>
+            )}
           </Link>
         );
       })}
@@ -74,7 +80,7 @@ export function MobileNav() {
       aria-label="Main"
       className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      {navItems.map(({ href, label, icon: Icon }) => {
+      {navItems.map(({ href, label, icon: Icon, soon }) => {
         const active = isActive(pathname, href);
         return (
           <Link
@@ -98,6 +104,11 @@ export function MobileNav() {
             )}
             <Icon aria-hidden="true" className="relative z-10 size-4" />
             <span className="relative z-10">{label}</span>
+            {soon && (
+              <span className="relative z-10 rounded-full bg-muted px-1.5 py-px text-[0.65rem] font-medium text-muted-foreground">
+                Soon
+              </span>
+            )}
           </Link>
         );
       })}

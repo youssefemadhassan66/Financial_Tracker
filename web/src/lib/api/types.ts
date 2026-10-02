@@ -44,6 +44,15 @@ export interface User {
   defaultCurrency: Currency;
 }
 
+/** A phone that may send bank SMS (API.md section 11). The key itself is never part of this. */
+export interface DeviceDto {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revoked: boolean;
+}
+
 export interface AuthResponse {
   user: User;
   accessToken: string;
