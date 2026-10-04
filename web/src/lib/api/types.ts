@@ -256,3 +256,29 @@ export interface SubscriptionSummary {
   totals: { currency: Currency; monthly: string; yearly: string }[];
   upcoming: { subscriptionId: string; name: string; date: string; amount: string; currency: Currency }[];
 }
+
+// Credit card statements (API.md section 10)
+
+export interface StatementImportResult {
+  period: string; // "2026-09"
+  status: 'imported' | 'already-imported';
+  confirmed: number;
+  created: number;
+  unmatchedPayments: number;
+  pricedSms: number;
+}
+
+export interface CardStatementView {
+  id: string;
+  period: string;
+  dueDate: string;
+  creditLimit: string;
+  availableCredit: string;
+  totalDue: string;
+  minimumDue: string;
+  openingBalance: string;
+  closingBalance: string;
+  lineCount: number;
+  unmatchedPayments: number;
+  importedAt: string;
+}

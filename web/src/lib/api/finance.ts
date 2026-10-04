@@ -1,12 +1,24 @@
 import { apiFetch } from './client';
 import type {
   AccountDto,
+  CardStatementView,
   CategoryAnalytics,
   CategoryRecord,
   DeviceDto,
   SubscriptionSummary,
   TransactionView,
 } from './types';
+
+/** Imported statements of one credit card account, newest first. */
+export function statementsQuery(accountId: string) {
+  return {
+    queryKey: ['statements', accountId] as const,
+    queryFn: () =>
+      apiFetch<{ statements: CardStatementView[] }>(`/api/accounts/${encodeURIComponent(accountId)}/statements`).then(
+        (r) => [...r.statements].sort((a, b) => b.period.localeCompare(a.period)),
+      ),
+  };
+}
 
 /** Phones that can send bank SMS. Holds only names and dates, never a key. */
 export const devicesQuery = {

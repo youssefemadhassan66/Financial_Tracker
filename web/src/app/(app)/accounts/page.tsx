@@ -11,6 +11,7 @@ import { staggerItemVariants } from '@/components/motion/stagger';
 import { typeIcon, typeLabel } from '@/components/accounts/account-meta';
 import { AddAccountSheet } from '@/components/accounts/add-account-sheet';
 import { EditAccountSheet } from '@/components/accounts/edit-account-sheet';
+import { StatementsSheet } from '@/components/accounts/statements-sheet';
 import { EmptyState } from '@/components/empty-state';
 import { LiveRegion } from '@/components/live-region';
 import { PageHeader } from '@/components/page-header';
@@ -24,6 +25,7 @@ export default function AccountsPage() {
   const { data: accounts, isLoading, isError, refetch } = useQuery(accountsQuery);
   const [addOpen, setAddOpen] = React.useState(false);
   const [editingAccount, setEditingAccount] = React.useState<AccountDto | null>(null);
+  const [statementsAccount, setStatementsAccount] = React.useState<AccountDto | null>(null);
   const [liveAnnouncement, setLiveAnnouncement] = React.useState<string | null>(null);
   const [smsNotice, setSmsNotice] = React.useState(false);
 
@@ -158,14 +160,16 @@ export default function AccountsPage() {
                       <p className="text-xs text-muted-foreground">No balance yet</p>
                     )}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEditingAccount(account)}
-                    className="shrink-0"
-                  >
-                    Edit
-                  </Button>
+                  <div className="flex shrink-0 gap-2">
+                    {account.type === 'credit_card' && (
+                      <Button variant="outline" size="sm" onClick={() => setStatementsAccount(account)}>
+                        Statements
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => setEditingAccount(account)}>
+                      Edit
+                    </Button>
+                  </div>
                 </div>
               </motion.li>
             );
@@ -250,6 +254,14 @@ export default function AccountsPage() {
           setPendingAccountMutation(true);
           announce('Account created');
           toast.success('Account added');
+        }}
+      />
+
+      <StatementsSheet
+        account={statementsAccount}
+        open={statementsAccount !== null}
+        onOpenChange={(open) => {
+          if (!open) setStatementsAccount(null);
         }}
       />
 
