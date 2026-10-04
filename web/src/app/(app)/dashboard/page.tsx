@@ -227,6 +227,7 @@ const setupSteps: {
     icon: FileText,
     title: 'Import a card statement',
     body: 'Fills in what messages missed, like fees and foreign-currency charges in EGP.',
+    action: { href: '/accounts', label: 'Import' },
   },
 ];
 
