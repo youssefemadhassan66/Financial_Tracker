@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { BRAND_BACKGROUND_DARK, BRAND_BACKGROUND_LIGHT } from "@/lib/brand-colors";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
@@ -29,6 +30,16 @@ export const metadata: Metadata = {
   },
   description:
     "A personal finance tracker that turns the SMS your bank already sends into a clear picture of your spending, in EGP and USD.",
+  // iPhone "Add to Home Screen" opens full screen, with its own name under the icon.
+  appleWebApp: { capable: true, title: "Finance", statusBarStyle: "default" },
+};
+
+// Phone browser bar color, matching the page background in each theme.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: BRAND_BACKGROUND_LIGHT },
+    { media: "(prefers-color-scheme: dark)", color: BRAND_BACKGROUND_DARK },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
