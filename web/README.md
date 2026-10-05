@@ -41,6 +41,22 @@ Then open `http://<your-lan-ip>:3001` on the phone (and on the PC, so both share
 one login cookie). If the phone cannot connect, allow Node.js through Windows
 Firewall for private networks.
 
+### Everyday use: one click (Windows)
+
+`scripts/start-local.ps1` starts the database (Docker), the API (port 3002) and a
+production build of this app (port 3001, same-origin mode), opens the dashboard
+and prints the address for your phone. It rebuilds only after code changes.
+`scripts/stop-local.ps1` stops the API and the app. The backend repo must sit next
+to this one as `../46-financial_app`.
+
+Run `scripts/install-shortcuts.ps1` once (right-click > Run with PowerShell) to
+get **Start Finance** and **Stop Finance** on the desktop.
+
+On the phone, open the printed address and add it to the home screen for an app
+icon (iPhone: Share > Add to Home Screen; Android Chrome: menu > Add to Home
+screen). Over plain `http://` on Wi-Fi, iPhone opens it full screen; Android
+opens it as a browser shortcut until the app is served over HTTPS.
+
 ## Verification & Quality Gates
 
 Run the verification commands to check type safety, code styling, test suites, and production build:
