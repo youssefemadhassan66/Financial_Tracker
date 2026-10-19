@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ChevronDown, KeyRound, MessageSquareText, ShieldCheck, Smartphone } from 'lucide-react';
+import { AccentWord } from '@/components/accent-word';
 import { Reveal } from '@/components/motion/reveal';
 import { Stagger, StaggerItem } from '@/components/motion/stagger';
 import { Logo } from '@/components/brand/logo';
@@ -97,8 +98,8 @@ export default function HomePage() {
               </p>
             </StaggerItem>
             <StaggerItem index={1}>
-              <h1 className="mt-6 font-heading text-[clamp(2.5rem,5.5vw,4.25rem)] leading-[1.02] font-semibold tracking-[-0.03em] text-balance">
-                Your bank already texts you every purchase.
+              <h1 className="mt-6 font-display text-[clamp(2.5rem,5.5vw,4.25rem)] leading-[1.02] tracking-[-0.015em] text-balance">
+                Your bank already texts you <AccentWord>every purchase.</AccentWord>
               </h1>
             </StaggerItem>
             <StaggerItem index={2}>
@@ -129,7 +130,7 @@ export default function HomePage() {
         <section id="how" aria-labelledby="how-heading" className="scroll-mt-20 border-y bg-sidebar">
           <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 lg:py-24">
             <Reveal>
-              <h2 id="how-heading" className="max-w-2xl font-heading text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight font-semibold tracking-tight text-balance">
+              <h2 id="how-heading" className="max-w-2xl font-display text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight tracking-tight text-balance">
                 Set it up once. After that, spending records itself.
               </h2>
             </Reveal>
@@ -158,7 +159,7 @@ export default function HomePage() {
           {features.map(({ id, title, body, Visual }, i) => (
             <Reveal as="article" key={id} className="grid items-center gap-10 lg:grid-cols-2 lg:gap-20">
               <div className={i % 2 === 1 ? 'lg:order-2' : undefined}>
-                <h2 className="font-heading text-[clamp(1.7rem,3vw,2.4rem)] leading-tight font-semibold tracking-tight text-balance">
+                <h2 className="font-display text-[clamp(1.7rem,3vw,2.4rem)] leading-tight tracking-tight text-balance">
                   {title}
                 </h2>
                 <p className="mt-4 max-w-lg text-lg leading-relaxed text-muted-foreground text-pretty">{body}</p>
@@ -174,7 +175,7 @@ export default function HomePage() {
         <section id="privacy" aria-labelledby="privacy-heading" className="scroll-mt-20 border-y bg-sidebar">
           <div className="mx-auto grid max-w-6xl gap-12 px-5 py-20 sm:px-8 lg:grid-cols-[1fr_1.4fr] lg:py-24">
             <Reveal>
-              <h2 id="privacy-heading" className="font-heading text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight font-semibold tracking-tight">
+              <h2 id="privacy-heading" className="font-display text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight tracking-tight">
                 Private by design
               </h2>
               <p className="mt-4 max-w-md text-muted-foreground text-pretty">
@@ -198,7 +199,7 @@ export default function HomePage() {
         {/* FAQ */}
         <section id="faq" aria-labelledby="faq-heading" className="mx-auto max-w-3xl scroll-mt-20 px-5 py-24 sm:px-8">
           <Reveal>
-            <h2 id="faq-heading" className="font-heading text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight font-semibold tracking-tight">
+            <h2 id="faq-heading" className="font-display text-[clamp(1.9rem,3.5vw,2.75rem)] leading-tight tracking-tight">
               Questions, answered
             </h2>
           </Reveal>
@@ -220,8 +221,8 @@ export default function HomePage() {
         {/* Closing band */}
         <section className="px-5 pb-24 sm:px-8">
           <div className="mx-auto max-w-6xl rounded-3xl bg-primary px-8 py-16 text-primary-foreground sm:px-14 lg:flex lg:items-center lg:justify-between lg:gap-10 lg:py-20">
-            <h2 className="max-w-xl font-heading text-[clamp(2rem,4vw,3rem)] leading-[1.05] font-semibold tracking-tight text-balance">
-              Stop typing expenses. Start seeing them.
+            <h2 className="max-w-xl font-display text-[clamp(2rem,4vw,3rem)] leading-[1.05] tracking-tight text-balance">
+              Stop typing expenses. <em className="italic">Start seeing them.</em>
             </h2>
             <div className="mt-8 shrink-0 lg:mt-0">
               <PrimaryCta tone="ink" />

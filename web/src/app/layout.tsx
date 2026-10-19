@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { BRAND_BACKGROUND_DARK, BRAND_BACKGROUND_LIGHT } from "@/lib/brand-colors";
-import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
+import { DM_Serif_Display, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
@@ -17,9 +17,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Headings only (page titles, the home page). UI text, labels and numbers stay in Geist.
-const bricolage = Bricolage_Grotesque({
-  variable: "--font-bricolage",
+// Big titles only (page titles, the home page), with an italic for the one
+// highlighted word. UI text, labels and numbers stay in Geist.
+const dmSerif = DM_Serif_Display({
+  variable: "--font-dm-serif",
+  weight: "400",
+  style: ["normal", "italic"],
   subsets: ["latin"],
 });
 
@@ -36,6 +39,8 @@ export const metadata: Metadata = {
 
 // Phone browser bar color, matching the page background in each theme.
 export const viewport: Viewport = {
+  // Lets the phone tab bar sit above the home indicator (safe-area insets).
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: BRAND_BACKGROUND_LIGHT },
     { media: "(prefers-color-scheme: dark)", color: BRAND_BACKGROUND_DARK },
@@ -46,7 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${dmSerif.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <MotionProvider>

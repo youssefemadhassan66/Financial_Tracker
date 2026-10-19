@@ -41,23 +41,3 @@ export function SidebarUser({ user, logout }: { user: User; logout: () => Promis
     </div>
   );
 }
-
-/** Top bar on phones: the avatar doubles as the log-out control's label. */
-export function MobileUser({ user, logout }: { user: User; logout: () => Promise<void> }) {
-  const { pending, run } = useLogout(logout);
-  return (
-    <div className="flex items-center gap-2">
-      <span
-        aria-hidden="true"
-        title={user.email}
-        className="grid size-8 place-items-center rounded-full bg-accent text-sm font-semibold text-accent-foreground"
-      >
-        {initial(user.email)}
-      </span>
-      <Button variant="ghost" size="sm" onClick={run} disabled={pending} className="h-9 gap-1.5 px-2.5">
-        {pending ? <LoaderCircle aria-hidden="true" className="motion-safe:animate-spin" /> : <LogOut aria-hidden="true" />}
-        Log out
-      </Button>
-    </div>
-  );
-}

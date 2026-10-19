@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { ArrowRight, FileText, MessageSquareText, Wallet, type LucideIcon } from 'lucide-react';
@@ -21,11 +22,18 @@ import {
 import type { CategoryAnalytics } from '@/lib/api/types';
 import { formatMoney, monthName } from '@/lib/format';
 
-function greeting(hour: number): string {
-  if (hour < 5) return 'Good evening';
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
+// Read on the client only: the server (and the build) has another clock and
+// time zone, and a different word there breaks hydration.
+const noSubscribe = () => () => {};
+function usePartOfDay(): string {
+  return React.useSyncExternalStore(noSubscribe, () => partOfDay(new Date().getHours()), () => 'day');
+}
+
+function partOfDay(hour: number): string {
+  if (hour < 5) return 'evening';
+  if (hour < 12) return 'morning';
+  if (hour < 18) return 'afternoon';
+  return 'evening';
 }
 
 const UPCOMING_DAYS = 30;
@@ -36,6 +44,7 @@ export default function DashboardPage() {
   const recent = useQuery(recentTransactionsQuery(6));
   const summary = useQuery(subscriptionSummaryQuery(UPCOMING_DAYS));
   const accounts = useQuery(accountsQuery);
+  const dayPart = usePartOfDay();
 
   const isEmpty =
     recent.isSuccess && recent.data.length === 0 && accounts.isSuccess && accounts.data.length === 0;
@@ -43,7 +52,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title={greeting(new Date().getHours())}
+        title="Good"
+        titleAccent={dayPart}
         description={
           analytics.data
             ? `Here’s ${monthName(analytics.data.period.from)} so far.`
@@ -57,7 +67,7 @@ export default function DashboardPage() {
         <>
           <SpendingOverview query={analytics} />
 
-          <div className="grid items-start gap-6 lg:grid-cols-5">
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
             <DashboardSection
               title="Recent activity"
               href="/transactions"
@@ -194,7 +204,7 @@ function SpendingOverview({ query }: { query: UseQueryResult<CategoryAnalytics> 
         <Stagger className={currencies.length > 1 ? 'grid gap-6 md:grid-cols-2' : 'grid gap-6'}>
           {currencies.map((c, i) => (
             <StaggerItem key={c.currency} index={i}>
-              <SpendingPanel data={c} periodFrom={period.from} previousFrom={previousPeriod.from} />
+              <SpendingPanel data={c} periodFrom={period.from} previousTo={previousPeriod.to} />
             </StaggerItem>
           ))}
         </Stagger>

@@ -13,11 +13,11 @@ const TOP_CATEGORIES = 5;
 export function SpendingPanel({
   data,
   periodFrom,
-  previousFrom,
+  previousTo,
 }: {
   data: CurrencyAnalytics;
   periodFrom: string;
-  previousFrom: string;
+  previousTo: string;
 }) {
   const { currency, spending, income } = data;
   const top = spending.categories.slice(0, TOP_CATEGORIES);
@@ -40,7 +40,9 @@ export function SpendingPanel({
       <Comparison
         changePercent={spending.changePercent}
         previousTotal={formatMoney(spending.previousTotal, currency)}
-        previousMonth={monthName(previousFrom)}
+        // The previous period is "the same number of days just before" (API.md 7):
+        // for all of October that is 31 Aug - 30 Sep. Name it by the month it ends in.
+        previousMonth={monthName(previousTo)}
       />
 
       {income.count > 0 && (

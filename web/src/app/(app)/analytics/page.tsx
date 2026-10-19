@@ -213,7 +213,7 @@ function AnalyticsContent() {
           </FadeIn>
 
           {/* Main Charts & Categories Grid */}
-          <Stagger className="grid items-start gap-6 lg:grid-cols-2">
+          <Stagger className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
             {/* Part to Whole (Left Column) */}
             <StaggerItem index={0}>
               <PartToWhole
