@@ -1,0 +1,183 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Theme follows the operating system (PRODUCT.md: light + dark). */
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  /* Masroof's headings: Plus Jakarta Sans (bold), big titles ExtraBold. */
+  --font-heading: var(--font-jakarta), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-jakarta), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success: var(--success);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Palette (user's choice, 2026-10-19): a Say-style look. Soft neutral grey
+ * page, white cards, near-black ink for selected pills, and ONE accent,
+ * emerald (#047857, hue ~166), for primary actions, links and focus. Solid,
+ * never a gradient. Emerald is never used alone to mean "money in": amounts
+ * always carry a sign or a label (PRODUCT.md). Warnings amber, errors crimson.
+ * Every text pairing below was checked for WCAG AA in both themes.
+ */
+:root {
+  color-scheme: light;
+  --background: oklch(0.968 0.002 250);
+  --foreground: oklch(0.2 0.006 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.006 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.006 260);
+  --primary: oklch(0.508 0.105 165.6);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.948 0.003 250);
+  --secondary-foreground: oklch(0.2 0.006 260);
+  --muted: oklch(0.948 0.003 250);
+  --muted-foreground: oklch(0.5 0.01 260);
+  --accent: oklch(0.955 0.04 165);
+  --accent-foreground: oklch(0.45 0.1 166);
+  --destructive: oklch(0.55 0.2 25);
+  --warning: oklch(0.95 0.045 70);
+  --warning-foreground: oklch(0.47 0.11 60);
+  --success: oklch(0.45 0.1 166);
+  --border: oklch(0.915 0.004 250);
+  --input: oklch(0.875 0.005 250);
+  --ring: oklch(0.6 0.12 165);
+  /* Ink: the near-black of selected pills (Say-style tabs), white in dark mode. */
+  --ink: oklch(0.2 0.006 260);
+  --ink-foreground: oklch(0.99 0 0);
+  /* Categorical chart palette in FIXED order (emerald, amber, blue, rust, rose).
+     Lightness is spread so every pair stays apart under protan, deutan and tritan
+     simulation (min OKLab distance 0.13). Amber is below 3:1 on white, so charts
+     always carry visible labels or a table view. Never cycle extra hues. */
+  --chart-1: oklch(0.56 0.11 165);
+  --chart-2: oklch(0.84 0.11 75);
+  --chart-3: oklch(0.42 0.11 258);
+  --chart-4: oklch(0.42 0.12 35);
+  --chart-5: oklch(0.69 0.11 330);
+  --radius: 0.75rem;
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.2 0.006 260);
+  --sidebar-primary: oklch(0.508 0.105 165.6);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.2 0.006 260);
+  --sidebar-accent-foreground: oklch(0.99 0 0);
+  --sidebar-border: oklch(0.915 0.004 250);
+  --sidebar-ring: oklch(0.6 0.12 165);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: oklch(0.16 0.004 260);
+    --foreground: oklch(0.95 0.003 260);
+    --card: oklch(0.205 0.005 260);
+    --card-foreground: oklch(0.95 0.003 260);
+    --popover: oklch(0.225 0.005 260);
+    --popover-foreground: oklch(0.95 0.003 260);
+    --primary: oklch(0.77 0.14 163);
+    --primary-foreground: oklch(0.2 0.04 165);
+    --secondary: oklch(0.25 0.005 260);
+    --secondary-foreground: oklch(0.95 0.003 260);
+    --muted: oklch(0.25 0.005 260);
+    --muted-foreground: oklch(0.72 0.01 260);
+    --accent: oklch(0.3 0.05 165);
+    --accent-foreground: oklch(0.82 0.12 163);
+    --destructive: oklch(0.7 0.16 25);
+    --warning: oklch(0.32 0.06 65);
+    --warning-foreground: oklch(0.87 0.1 75);
+    --success: oklch(0.82 0.12 163);
+    --border: oklch(0.29 0.006 260);
+    --input: oklch(0.34 0.006 260);
+    --ring: oklch(0.7 0.13 163);
+    --ink: oklch(0.95 0.003 260);
+    --ink-foreground: oklch(0.18 0.005 260);
+    --chart-1: oklch(0.78 0.14 165);
+    --chart-2: oklch(0.71 0.14 75);
+    --chart-3: oklch(0.62 0.14 258);
+    --chart-4: oklch(0.59 0.15 35);
+    --chart-5: oklch(0.5 0.14 330);
+    --sidebar: oklch(0.185 0.005 260);
+    --sidebar-foreground: oklch(0.95 0.003 260);
+    --sidebar-primary: oklch(0.77 0.14 163);
+    --sidebar-primary-foreground: oklch(0.2 0.04 165);
+    --sidebar-accent: oklch(0.95 0.003 260);
+    --sidebar-accent-foreground: oklch(0.18 0.005 260);
+    --sidebar-border: oklch(0.27 0.006 260);
+    --sidebar-ring: oklch(0.7 0.13 163);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-variant-numeric: tabular-nums;
+  }
+  html {
+    @apply font-sans;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-heading);
+  }
+}
+
+/* PRODUCT.md: respect reduced motion everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
