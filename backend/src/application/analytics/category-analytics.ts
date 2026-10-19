@@ -85,7 +85,7 @@ function changePercent(current: Decimal, previous: Decimal): number | null {
 }
 
 /** Net per currency+category: debits add, credits (refunds) subtract. */
-function netByCategory(rows: CategoryTotalRow[]): Map<string, { net: Decimal; count: number }> {
+export function netByCategory(rows: CategoryTotalRow[]): Map<string, { net: Decimal; count: number }> {
   const result = new Map<string, { net: Decimal; count: number }>();
   for (const row of rows) {
     const key = `${row.currency}|${row.categoryId ?? ''}`;

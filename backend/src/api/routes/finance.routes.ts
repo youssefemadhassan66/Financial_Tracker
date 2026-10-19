@@ -5,6 +5,11 @@ import { requireUser } from '../middleware/authenticate.js';
 import {
   accountIdParams,
   analyticsQuery,
+  budgetCategoryParams,
+  budgetListQuery,
+  createInstallmentBody,
+  installmentIdParams,
+  setBudgetBody,
   createAccountBody,
   createCategoryBody,
   createSubscriptionBody,
@@ -161,6 +166,40 @@ export function financeRouter(container: Container): Router {
       console.error('[subscriptions] matching after subscription creation failed', error);
     }
     res.status(201).json({ subscription });
+  });
+
+  // --- budgets -----------------------------------------------------------
+  router.get('/budgets', auth, async (req, res) => {
+    const { month } = budgetListQuery.parse(req.query);
+    res.json(await container.listBudgets.execute(req.auth!.userId, month));
+  });
+
+  // Sets the limit from this month on; earlier months keep theirs.
+  router.put('/budgets/:categoryId', auth, async (req, res) => {
+    const { categoryId } = budgetCategoryParams.parse(req.params);
+    await container.setBudget.execute(req.auth!.userId, categoryId, setBudgetBody.parse(req.body));
+    res.status(204).end();
+  });
+
+  router.delete('/budgets/:categoryId', auth, async (req, res) => {
+    const { categoryId } = budgetCategoryParams.parse(req.params);
+    await container.stopBudget.execute(req.auth!.userId, categoryId);
+    res.status(204).end();
+  });
+
+  // --- installments ------------------------------------------------------
+  router.get('/installments', auth, async (req, res) => {
+    res.json(await container.listInstallments.execute(req.auth!.userId));
+  });
+
+  router.post('/installments', auth, async (req, res) => {
+    const input = createInstallmentBody.parse(req.body);
+    res.status(201).json({ plan: await container.createInstallmentPlan.execute(req.auth!.userId, defined(input)) });
+  });
+
+  router.post('/installments/:id/cancel', auth, async (req, res) => {
+    const { id } = installmentIdParams.parse(req.params);
+    res.json({ plan: await container.cancelInstallmentPlan.execute(req.auth!.userId, id) });
   });
 
   router.post('/subscriptions/:id/:action', auth, async (req, res) => {

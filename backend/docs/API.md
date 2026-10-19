@@ -522,9 +522,79 @@ for the frontend.
 
 ---
 
-## 12. Not available yet
+## 12. Budgets
+
+A monthly spending limit per category, in one currency. Setting a limit applies **from
+the current month on**: later months keep it until it is changed or stopped, earlier
+months keep what they had.
+
+| Endpoint | Body / query | Response |
+|---|---|---|
+| `GET /api/budgets` | `?month=2026-10` optional (current month when absent) | see below |
+| `PUT /api/budgets/:categoryId` | `{ "currency": "EGP", "limit": "500.00" }` | `204` |
+| `DELETE /api/budgets/:categoryId` | | `204`, or `404` when the category has no budget |
+
+```json
+{
+  "month": "2026-10",
+  "period": { "from": "2026-10-01", "to": "2026-10-31" },
+  "daysLeft": 13,
+  "budgets": [
+    {
+      "categoryId": "uuid", "categoryName": "Groceries", "currency": "EGP",
+      "limit": "500.00", "spent": "400.00", "remaining": "100.00",
+      "percentUsed": 80, "state": "near"
+    }
+  ]
+}
+```
+- `spent` is net like analytics (refunds subtract), never below zero; `remaining` goes
+  negative once over the limit.
+- `state`: `ok`, `near` (80% or more), `over` (more than the limit). Sorted by
+  `percentUsed`, highest first. `percentUsed` is for drawing only; show the strings.
+- Only `spending` categories can have a budget (an income category → `400`).
+- `daysLeft` counts today; `0` for a past month.
+
+---
+
+## 13. Installment plans
+
+A purchase paid in equal monthly installments (valU, Halan, a bank plan). How many are
+paid, the next due date and what remains are computed from `firstDueDate`: a payment
+counts as made once its due date has passed.
+
+| Endpoint | Body | Response |
+|---|---|---|
+| `GET /api/installments` | | `{ "plans": InstallmentPlan[], "totals": [...] }` |
+| `POST /api/installments` | see below | `201 { "plan": InstallmentPlan }` |
+| `POST /api/installments/:id/cancel` | | `{ "plan" }` (final; cancelling twice → `400`) |
+
+Create body (`provider`, `accountId` optional: omit them, do not send `null`):
+```json
+{ "name": "TEST Phone", "provider": "TEST Pay", "installmentAmount": "750.00", "currency": "EGP",
+  "totalInstallments": 6, "firstDueDate": "2026-08-11", "accountId": "uuid" }
+```
+`InstallmentPlan`:
+```json
+{
+  "id": "uuid", "name": "TEST Phone", "provider": "TEST Pay",
+  "installmentAmount": "750.00", "currency": "EGP",
+  "totalInstallments": 6, "paidInstallments": 3,
+  "firstDueDate": "2026-08-11", "nextDueDate": "2026-11-11", "endDate": "2027-01-11",
+  "totalCost": "4500.00", "remainingAmount": "2250.00",
+  "status": "active", "accountId": null
+}
+```
+- `status`: `active`, `completed` (every due date passed) or `cancelled`. Plans are sorted
+  active first, then by next (or last) due date.
+- `totals`: per currency, active plans only: `{ "currency", "monthly", "remaining" }`.
+- `totalInstallments` is 1 to 120.
+
+---
+
+## 14. Not available yet
 
 No endpoints exist for: editing or deleting a transaction, changing a transaction's
 category, editing or deleting a subscription (only pause/resume/cancel), deleting an
-account or category, budgets, password change. Do not build UI that needs them; ask for
+account or category, editing an installment plan, password change. Do not build UI that needs them; ask for
 the endpoint first.

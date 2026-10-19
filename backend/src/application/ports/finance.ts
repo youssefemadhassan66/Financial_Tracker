@@ -2,6 +2,8 @@ import type { Account } from '../../domain/account.js';
 import type { Money } from '../../domain/money.js';
 import type { Transaction, TransactionDirection, TransactionSource } from '../../domain/transaction.js';
 import type { Subscription, SubscriptionStatus } from '../../domain/subscription.js';
+import type { InstallmentPlan } from '../../domain/installment.js';
+import type { CalendarDate } from '../../domain/calendar-date.js';
 import type { CategoryKind } from '../../domain/default-categories.js';
 import type { Currency } from '../../domain/currency.js';
 import type { SpendingPolicy } from '../../domain/spending-policy.js';
@@ -107,6 +109,30 @@ export interface SubscriptionRepository {
   save(subscription: Subscription): Promise<void>;
   findForUser(id: string, userId: UserId): Promise<Subscription | null>;
   listForUser(userId: UserId, status?: SubscriptionStatus): Promise<Subscription[]>;
+}
+
+export interface InstallmentPlanRepository {
+  create(plan: InstallmentPlan): Promise<void>;
+  /** Saves the fields the entity lets change (status). */
+  save(plan: InstallmentPlan): Promise<void>;
+  findForUser(id: string, userId: UserId): Promise<InstallmentPlan | null>;
+  listForUser(userId: UserId): Promise<InstallmentPlan[]>;
+}
+
+/** A category's monthly limit, in force from `month` until a later row replaces it. */
+export interface BudgetRow {
+  categoryId: CategoryId;
+  /** First day of the month the limit starts. */
+  month: CalendarDate;
+  /** Zero means "no budget from this month on". */
+  limit: Money;
+}
+
+export interface BudgetRepository {
+  /** Sets the limit from `month` on: one row per user, category and month. */
+  setFrom(userId: UserId, categoryId: CategoryId, month: CalendarDate, limit: Money): Promise<void>;
+  /** Per category, the newest row whose month is on or before `month`. */
+  effectiveOn(userId: UserId, month: CalendarDate): Promise<BudgetRow[]>;
 }
 
 /** An expense not yet linked to a subscription. */
