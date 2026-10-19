@@ -90,6 +90,12 @@ enum SubscriptionStatus {
   cancelled
 }
 
+/// Completed is derived from the schedule, never stored.
+enum InstallmentStatus {
+  active
+  cancelled
+}
+
 enum Currency {
   EGP
   USD
@@ -107,18 +113,19 @@ model User {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  settings       UserSettings?
-  accounts       Account[]
-  categories     Category[]
-  transactions   Transaction[]
-  merchantMap    MerchantCategoryMap[]
-  rawMessages    RawMessage[]
-  refreshTokens  RefreshToken[]
-  deviceKeys     DeviceKey[]
-  budgets        Budget[]
-  subscriptions  Subscription[]
-  cardStatements CardStatement[]
+  settings                         UserSettings?
+  accounts                         Account[]
+  categories                       Category[]
+  transactions                     Transaction[]
+  merchantMap                      MerchantCategoryMap[]
+  rawMessages                      RawMessage[]
+  refreshTokens                    RefreshToken[]
+  deviceKeys                       DeviceKey[]
+  budgets                          Budget[]
+  subscriptions                    Subscription[]
+  cardStatements                   CardStatement[]
   subscriptionSuggestionDismissals SubscriptionSuggestionDismissal[]
+  installmentPlans                 InstallmentPlan[]
 
   @@map("users")
 }
@@ -217,11 +224,12 @@ model Account {
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  creditCard    CreditCardDetails?
-  statements    CardStatement[]
-  available     AccountAvailableBalance?
-  transactions  Transaction[]
-  subscriptions Subscription[]
+  creditCard       CreditCardDetails?
+  statements       CardStatement[]
+  available        AccountAvailableBalance?
+  transactions     Transaction[]
+  subscriptions    Subscription[]
+  installmentPlans InstallmentPlan[]
 
   @@index([userId])
   @@map("accounts")
@@ -677,4 +685,34 @@ model SubscriptionSuggestionDismissal {
 
   @@id([userId, merchantKey])
   @@map("subscription_suggestion_dismissals")
+}
+
+/// A purchase paid in equal monthly installments (valU, Halan, a bank plan).
+/// How many are paid and the next due date are COMPUTED from first_due_date,
+/// like a subscription's billing dates, so they can never drift.
+model InstallmentPlan {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name     String
+  /// Who is paid: valU, Halan, Souhoola, the bank...
+  provider String?
+
+  installmentAmount Decimal  @map("installment_amount") @db.Decimal(18, 2)
+  currency          Currency
+  totalInstallments Int      @map("total_installments")
+  firstDueDate      DateTime @map("first_due_date") @db.Date
+
+  accountId String?  @map("account_id") @db.Uuid
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  status      InstallmentStatus @default(active)
+  cancelledAt DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([userId, status])
+  @@map("installment_plans")
 }

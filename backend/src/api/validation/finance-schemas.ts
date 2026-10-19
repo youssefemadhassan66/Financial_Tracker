@@ -110,6 +110,34 @@ export const dismissSubscriptionSuggestionBody = z.strictObject({
   merchantKey: safeText({ max: 120 }),
 });
 
+// --- budgets -------------------------------------------------------------
+
+export const budgetListQuery = z.strictObject({
+  /** "2026-10"; the current month when absent. */
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Must be a month in YYYY-MM form').optional(),
+});
+
+export const budgetCategoryParams = z.strictObject({ categoryId: uuidParam });
+
+export const setBudgetBody = z.strictObject({
+  currency: currencyField,
+  limit: moneyAmountField,
+});
+
+// --- installments --------------------------------------------------------
+
+export const createInstallmentBody = z.strictObject({
+  name: safeText({ max: 60 }),
+  provider: safeText({ max: 60 }).optional(),
+  installmentAmount: moneyAmountField,
+  currency: currencyField,
+  totalInstallments: z.number().int().min(1).max(120),
+  firstDueDate: calendarDateField,
+  accountId: uuidParam.optional(),
+});
+
+export const installmentIdParams = z.strictObject({ id: uuidParam });
+
 // --- stored SMS ----------------------------------------------------------
 
 /** Two waiting halves of one transfer, chosen by the user. */

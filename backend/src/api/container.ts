@@ -38,6 +38,9 @@ import {
   SuggestSubscriptions,
 } from '../application/subscriptions/suggest-subscriptions.js';
 import { MatchSubscriptionCharges } from '../application/subscriptions/match-charges.js';
+import { CancelInstallmentPlan, CreateInstallmentPlan, ListInstallments } from '../application/plans/installments.js';
+import { ListBudgets, SetBudget, StopBudget } from '../application/plans/budgets.js';
+import { PrismaBudgetRepository, PrismaInstallmentPlanRepository } from '../infrastructure/persistence/prisma-plan-repositories.js';
 import type { AccessTokenService } from '../application/ports/security.js';
 import { getPrismaClient } from '../infrastructure/persistence/prisma-client.js';
 import { PrismaCardStatementRepository } from '../infrastructure/persistence/prisma-card-statement-repository.js';
@@ -113,6 +116,12 @@ export interface Container {
   matchSubscriptionCharges: MatchSubscriptionCharges;
   suggestSubscriptions: SuggestSubscriptions;
   dismissSuggestion: DismissSuggestion;
+  listBudgets: ListBudgets;
+  setBudget: SetBudget;
+  stopBudget: StopBudget;
+  listInstallments: ListInstallments;
+  createInstallmentPlan: CreateInstallmentPlan;
+  cancelInstallmentPlan: CancelInstallmentPlan;
 }
 
 export function buildContainer(
@@ -138,6 +147,8 @@ export function buildContainer(
   const subscriptionCharges = new PrismaSubscriptionChargeRepository(prisma);
   const suggestionDismissals = new PrismaSuggestionDismissalRepository(prisma);
   const analytics = new PrismaAnalyticsQueries(prisma);
+  const budgets = new PrismaBudgetRepository(prisma);
+  const installmentPlans = new PrismaInstallmentPlanRepository(prisma);
   const merchantCategories = new PrismaMerchantCategoryRepository(prisma);
 
   const processRawSms = new ProcessRawSms(
@@ -192,5 +203,11 @@ export function buildContainer(
     matchSubscriptionCharges: new MatchSubscriptionCharges(subscriptions, subscriptionCharges, clock),
     suggestSubscriptions: new SuggestSubscriptions(subscriptions, subscriptionCharges, suggestionDismissals, clock),
     dismissSuggestion: new DismissSuggestion(suggestionDismissals),
+    listBudgets: new ListBudgets(budgets, categories, analytics, clock),
+    setBudget: new SetBudget(budgets, categories, clock),
+    stopBudget: new StopBudget(budgets, clock),
+    listInstallments: new ListInstallments(installmentPlans, clock),
+    createInstallmentPlan: new CreateInstallmentPlan(installmentPlans, accounts, clock),
+    cancelInstallmentPlan: new CancelInstallmentPlan(installmentPlans, clock),
   };
 }
