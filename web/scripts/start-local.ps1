@@ -5,7 +5,8 @@
 # The web app runs as a production build (fast, no dev overlay). It is rebuilt
 # only when the code changed since the last build.
 #
-# Expects the backend repo next to this one: ..\46-financial_app
+# Finds the backend next to this folder: ..\backend (the combined
+# Financial_Tracker repo) or ..\46-financial_app (separate repos).
 # Stop everything with scripts\stop-local.ps1.
 
 # Continue, not Stop: in Windows PowerShell a native tool writing to stderr
@@ -15,7 +16,9 @@ $ErrorActionPreference = 'Continue'
 $Host.UI.RawUI.WindowTitle = 'Masroof - starting'
 
 $Web = Split-Path -Parent $PSScriptRoot
-$Api = Join-Path (Split-Path -Parent $Web) '46-financial_app'
+$Parent = Split-Path -Parent $Web
+$Api = Join-Path $Parent 'backend'
+if (-not (Test-Path (Join-Path $Api 'package.json'))) { $Api = Join-Path $Parent '46-financial_app' }
 $WebPort = 3001
 $ApiPort = 3002
 $PidFile = Join-Path $env:TEMP 'finance-app-pids.txt'
