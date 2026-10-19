@@ -31,8 +31,8 @@ export const navItems: { href: string; label: string; icon: LucideIcon; soon?: b
   { href: '/analytics', label: 'Analytics', icon: ChartColumn },
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/accounts', label: 'Accounts', icon: Wallet },
-  { href: '/subscriptions', label: 'Subscriptions', icon: Repeat, soon: true },
-  { href: '/sms', label: 'SMS inbox', icon: MessageSquareText, soon: true },
+  { href: '/subscriptions', label: 'Subscriptions', icon: Repeat },
+  { href: '/sms', label: 'SMS inbox', icon: MessageSquareText },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
