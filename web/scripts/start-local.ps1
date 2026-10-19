@@ -95,6 +95,14 @@ Pop-Location
 if ($composeExit -ne 0) { Fail 'the database container did not start (docker compose up).' }
 Say '      ready' 'Green'
 
+# A copy of the data at most once a day (the scheduled task does the same).
+$backup = Join-Path $Api 'scripts\backup-db.ps1'
+if (Test-Path $backup) {
+  Start-Sleep -Seconds 2
+  & $backup -IfOlderThanHours 20 -Quiet
+  if ($LASTEXITCODE -ne 0) { Say '      (daily backup failed; the app still starts)' 'Yellow' }
+}
+
 $lan = Get-LanAddress
 $origins = "http://localhost:$WebPort"
 if ($lan) { $origins = "$origins,http://${lan}:$WebPort" }
