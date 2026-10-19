@@ -46,6 +46,8 @@ import { getPrismaClient } from '../infrastructure/persistence/prisma-client.js'
 import { PrismaCardStatementRepository } from '../infrastructure/persistence/prisma-card-statement-repository.js';
 import { PdfjsTextReader } from '../infrastructure/pdf/pdfjs-text-reader.js';
 import { ImportCardStatements, ListCardStatements } from '../application/statements/import-card-statements.js';
+import { DeleteStatementFile, GetStatementFile, ListStatementFiles } from '../application/statements/statement-files.js';
+import { PrismaStatementFileRepository } from '../infrastructure/persistence/prisma-statement-file-repository.js';
 import { PrismaUserRepository } from '../infrastructure/persistence/prisma-user-repository.js';
 import { PrismaRefreshTokenRepository } from '../infrastructure/persistence/prisma-refresh-token-repository.js';
 import { PrismaDeviceKeyRepository } from '../infrastructure/persistence/prisma-device-key-repository.js';
@@ -103,6 +105,9 @@ export interface Container {
   listAccounts: ListAccounts;
   importCardStatements: ImportCardStatements;
   listCardStatements: ListCardStatements;
+  listStatementFiles: ListStatementFiles;
+  getStatementFile: GetStatementFile;
+  deleteStatementFile: DeleteStatementFile;
   createAccount: CreateAccount;
   updateAccount: UpdateAccount;
   recordTransaction: RecordTransaction;
@@ -141,6 +146,7 @@ export function buildContainer(
   const accounts = new PrismaAccountRepository(prisma);
   const availableBalances = new PrismaAvailableBalanceRepository(prisma);
   const cardStatements = new PrismaCardStatementRepository(prisma);
+  const statementFiles = new PrismaStatementFileRepository(prisma);
   const transactions = new PrismaTransactionRepository(prisma);
   const settings = new PrismaUserSettingsRepository(prisma);
   const subscriptions = new PrismaSubscriptionRepository(prisma);
@@ -188,8 +194,18 @@ export function buildContainer(
     listCategories: new ListCategories(categories),
     createCategory: new CreateCategory(categories),
     listAccounts: new ListAccounts(accounts, availableBalances),
-    importCardStatements: new ImportCardStatements(accounts, cardStatements, new PdfjsTextReader(), settings),
+    importCardStatements: new ImportCardStatements(
+      accounts,
+      cardStatements,
+      new PdfjsTextReader(),
+      settings,
+      statementFiles,
+      installmentPlans,
+    ),
     listCardStatements: new ListCardStatements(accounts, cardStatements),
+    listStatementFiles: new ListStatementFiles(accounts, statementFiles),
+    getStatementFile: new GetStatementFile(statementFiles),
+    deleteStatementFile: new DeleteStatementFile(statementFiles),
     createAccount: new CreateAccount(accounts),
     updateAccount: new UpdateAccount(accounts, availableBalances),
     recordTransaction: new RecordTransaction(accounts, categories, transactions, settings),

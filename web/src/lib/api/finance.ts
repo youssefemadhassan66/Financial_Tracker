@@ -12,9 +12,15 @@ import type {
   SubscriptionSuggestion,
   SubscriptionSummary,
   TransactionView,
+  StatementFileDto,
 } from './types';
 
 /** Imported statements of one credit card account, newest first. */
+export const statementFilesQuery = {
+  queryKey: ['statement-files'] as const,
+  queryFn: () => apiFetch<{ files: StatementFileDto[] }>('/api/statement-files').then((r) => r.files),
+};
+
 export function statementsQuery(accountId: string) {
   return {
     queryKey: ['statements', accountId] as const,

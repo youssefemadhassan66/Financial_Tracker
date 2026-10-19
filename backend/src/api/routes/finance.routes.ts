@@ -10,6 +10,8 @@ import {
   createInstallmentBody,
   installmentIdParams,
   setBudgetBody,
+  statementFileListQuery,
+  statementFileParams,
   createAccountBody,
   createCategoryBody,
   createSubscriptionBody,
@@ -51,6 +53,24 @@ function pdfBody(body: unknown): Uint8Array {
   return new Uint8Array(body);
 }
 
+/**
+ * The name the browser gave the file (X-File-Name, URI-encoded), for
+ * display only. Never used as a path; control characters and folder
+ * parts are dropped.
+ */
+function uploadedFileName(header: unknown): string {
+  if (typeof header !== 'string' || header === '') return 'statement.pdf';
+  let name: string;
+  try {
+    name = decodeURIComponent(header);
+  } catch {
+    return 'statement.pdf';
+  }
+  // eslint-disable-next-line no-control-regex
+  name = (name.split(/[\\/]/).at(-1) ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  return name.slice(0, 200) || 'statement.pdf';
+}
+
 export function financeRouter(container: Container): Router {
   const router = Router();
   // Attached to EACH route rather than router.use(): this router is
@@ -65,7 +85,12 @@ export function financeRouter(container: Container): Router {
     express.raw({ type: 'application/pdf', limit: MAX_STATEMENT_BYTES }),
     async (req, res) => {
       const { id } = accountIdParams.parse(req.params);
-      const statements = await container.importCardStatements.execute(req.auth!.userId, id, pdfBody(req.body));
+      const outcome = await container.importCardStatements.execute(
+        req.auth!.userId,
+        id,
+        pdfBody(req.body),
+        uploadedFileName(req.get('X-File-Name')),
+      );
       // Best effort: the import is saved; a matching failure is fixed by
       // the next run (or POST /subscriptions/match), never by failing this.
       try {
@@ -73,9 +98,35 @@ export function financeRouter(container: Container): Router {
       } catch (error) {
         console.error('[subscriptions] matching after a statement import failed', error);
       }
-      res.status(201).json({ statements });
+      res.status(201).json(outcome);
     },
   );
+
+  // --- kept statement PDFs ------------------------------------------------
+  router.get('/statement-files', auth, async (req, res) => {
+    const { accountId } = statementFileListQuery.parse(req.query);
+    res.json({ files: await container.listStatementFiles.execute(req.auth!.userId, accountId) });
+  });
+
+  router.get('/statement-files/:id/content', auth, async (req, res) => {
+    const { id } = statementFileParams.parse(req.params);
+    const file = await container.getStatementFile.execute(req.auth!.userId, id);
+    res
+      .status(200)
+      .set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+        // Bank statements: never kept by a browser or proxy cache.
+        'Cache-Control': 'private, no-store',
+      })
+      .send(Buffer.from(file.content));
+  });
+
+  router.delete('/statement-files/:id', auth, async (req, res) => {
+    const { id } = statementFileParams.parse(req.params);
+    await container.deleteStatementFile.execute(req.auth!.userId, id);
+    res.status(204).end();
+  });
 
   router.get('/accounts/:id/statements', auth, async (req, res) => {
     const { id } = accountIdParams.parse(req.params);

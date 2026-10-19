@@ -4,12 +4,13 @@ import { addDays, localDateOf, startOfLocalDay, type CalendarDate } from '../../
 import { isCurrency } from '../../domain/currency.js';
 import { DomainError } from '../../domain/errors.js';
 import { newTransactionId, type UserId } from '../../domain/ids.js';
+import { firstDueDateFromStatement, InstallmentPlan } from '../../domain/installment.js';
 import { normalizeMerchantKey } from '../../domain/merchant-key.js';
 import { Money } from '../../domain/money.js';
 import { transactionShapeOf } from '../../domain/sms/sms-template.js';
 import { defaultCountsAsSpending, type SpendingPolicy } from '../../domain/spending-policy.js';
 import { Transaction } from '../../domain/transaction.js';
-import type { CardStatement, StatementLine } from '../../domain/statements/card-statement.js';
+import type { CardStatement, StatementInstallment, StatementLine } from '../../domain/statements/card-statement.js';
 import { parseCibCardStatements } from '../../domain/statements/cib-card-statement.js';
 import {
   kindOfNewLine,
@@ -19,10 +20,16 @@ import {
   type ForeignCharge,
 } from '../../domain/statements/reconcile.js';
 import { NotFoundError } from '../errors.js';
-import type { AccountRepository, UserSettingsRepository } from '../ports/finance.js';
+import type { AccountRepository, InstallmentPlanRepository, UserSettingsRepository } from '../ports/finance.js';
 import type { PdfTextReader } from '../ports/pdf.js';
 import type { ParsePayload, RawMessageRecord } from '../ports/sms.js';
-import type { CardStatementRepository, CardStatementView, PricedMessage, StatementLineToSave } from '../ports/statements.js';
+import type {
+  CardStatementRepository,
+  CardStatementView,
+  PricedMessage,
+  StatementFileRepository,
+  StatementLineToSave,
+} from '../ports/statements.js';
 
 export interface StatementImportResult {
   /** "2026-07" */
@@ -36,6 +43,15 @@ export interface StatementImportResult {
   unmatchedPayments: number;
   /** Foreign-currency charges known from SMS, now recorded at the amount billed. */
   pricedSms: number;
+}
+
+export interface StatementImportOutcome {
+  /** One per month in the file, oldest first. */
+  statements: StatementImportResult[];
+  /** Installment plans read from the statements' installment tables. */
+  installmentPlans: { added: number; alreadyKnown: number };
+  /** The kept PDF, to open it again later. */
+  fileId: string;
 }
 
 /** A waiting foreign-currency SMS, read back from what it stored. */
@@ -64,9 +80,11 @@ export class ImportCardStatements {
     private readonly statements: CardStatementRepository,
     private readonly reader: PdfTextReader,
     private readonly settings: UserSettingsRepository,
+    private readonly files: StatementFileRepository,
+    private readonly plans: InstallmentPlanRepository,
   ) {}
 
-  async execute(userId: UserId, accountId: string, pdf: Uint8Array): Promise<StatementImportResult[]> {
+  async execute(userId: UserId, accountId: string, pdf: Uint8Array, fileName = 'statement.pdf'): Promise<StatementImportOutcome> {
     const account = await this.accounts.findForUser(accountId, userId);
     if (account === null) {
       throw new NotFoundError('Account not found');
@@ -99,7 +117,53 @@ export class ImportCardStatements {
     for (const statement of oldestFirst) {
       results.push(await this.importOne(userId, account, statement, policy));
     }
-    return results;
+
+    // Kept only now: a file that is not a statement of this card never
+    // reaches here, so nothing but statements is ever stored.
+    const fileId = await this.files.keep({
+      userId,
+      accountId: account.id,
+      fileName: fileName.trim().slice(0, 200) || 'statement.pdf',
+      content: pdf,
+      periods: parsed.map((s) => s.period),
+    });
+    const installmentPlans = await this.addInstallmentPlans(userId, account, oldestFirst);
+    return { statements: results, installmentPlans, fileId };
+  }
+
+  /**
+   * One plan per row of the installment tables, added once: the same plan
+   * on several months' statements (payment 2 of 6, then 3 of 6) has one
+   * key. The newest statement dates it. Also done for months imported
+   * before, so uploading an old file again picks up its plans.
+   */
+  private async addInstallmentPlans(
+    userId: UserId,
+    account: Account,
+    oldestFirst: readonly CardStatement[],
+  ): Promise<StatementImportOutcome['installmentPlans']> {
+    const newest = new Map<string, { row: StatementInstallment; statement: CardStatement }>();
+    for (const statement of oldestFirst) {
+      for (const row of statement.installments) {
+        newest.set(installmentKey(account.id, row), { row, statement });
+      }
+    }
+    let added = 0;
+    for (const [key, { row, statement }] of newest) {
+      const plan = InstallmentPlan.create({
+        id: randomUUID(),
+        userId,
+        name: row.description,
+        provider: 'CIB',
+        installmentAmount: Money.create(row.monthlyAmount, account.currency),
+        totalInstallments: row.total,
+        firstDueDate: firstDueDateFromStatement(statement.dueDate, row.number),
+        accountId: account.id,
+        externalKey: key,
+      });
+      if (await this.plans.createIfNew(plan)) added++;
+    }
+    return { added, alreadyKnown: newest.size - added };
   }
 
   private async importOne(
@@ -230,6 +294,11 @@ export class ImportCardStatements {
       source: 'statement',
     });
   }
+}
+
+/** What stays the same for one plan from month to month. */
+function installmentKey(accountId: string, row: StatementInstallment): string {
+  return ['cib', accountId, row.startDate, row.monthlyAmount, row.total, row.description.toUpperCase()].join('|');
 }
 
 /** [from, to) around the lines' dates, wide enough for the bank's late booking. */

@@ -473,7 +473,8 @@ Content-Type: application/pdf
 ```
 (e.g. `fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/pdf', Authorization }, body: file })`
 with the `File` from an `<input type="file" accept="application/pdf">`). Max 5 MB. A
-non-PDF → 400.
+non-PDF → 400. Optional header `X-File-Name: <encodeURIComponent(file.name)>`: the name
+shown in the file list (display only).
 
 One PDF may hold several months. `201`:
 ```json
@@ -481,7 +482,9 @@ One PDF may hold several months. `201`:
   "statements": [
     { "period": "2026-07", "status": "imported", "confirmed": 25, "created": 4, "unmatchedPayments": 1, "pricedSms": 2 },
     { "period": "2026-06", "status": "already-imported", "confirmed": 0, "created": 0, "unmatchedPayments": 0, "pricedSms": 0 }
-  ]
+  ],
+  "installmentPlans": { "added": 1, "alreadyKnown": 0 },
+  "fileId": "uuid"
 }
 ```
 - `confirmed`: lines that matched transactions already known from SMS.
@@ -489,6 +492,30 @@ One PDF may hold several months. `201`:
 - `unmatchedPayments`: card payments with no SMS; they wait for the user.
 - `pricedSms`: foreign charges whose EGP amount this statement supplied.
 - Importing the same month again is safe: `already-imported`.
+- `installmentPlans`: rows of the statement's installment table, added to
+  `/api/installments` (provider `"CIB"`, linked to this card). A plan is added
+  once however many statements show it; `alreadyKnown` counts the ones you had.
+  Dates are counted from the statement: payment N is due on its due date.
+- `fileId`: the PDF is kept (once per user, however often uploaded) so it can be
+  opened again; see below. Only files that read as a statement of this card are kept.
+
+### `GET /api/statement-files[?accountId=uuid]` (auth)
+`200` → `{ "files": StatementFile[] }`, newest first, never the bytes:
+```json
+{ "id": "uuid", "accountId": "uuid", "fileName": "Statement Sep.pdf", "sizeBytes": 81234,
+  "uploadedAt": "2026-10-19T20:00:00.000Z", "periods": ["2026-09", "2026-08"] }
+```
+An unknown or someone else's `accountId` → 404.
+
+### `GET /api/statement-files/:id/content` (auth)
+`200` with the PDF (`Content-Type: application/pdf`, `Content-Disposition: inline`,
+`Cache-Control: private, no-store`). Fetch it with the access token and show it via
+`URL.createObjectURL(await res.blob())`; a plain link cannot carry the token.
+Someone else's file → 404.
+
+### `DELETE /api/statement-files/:id` (auth)
+`204`. Deletes the kept PDF only: the months imported from it and their
+transactions stay (their `fileId` becomes `null`). Unknown → 404.
 
 ### `GET /api/accounts/:id/statements` (auth)
 `200` → `{ "statements": CardStatementView[] }`:
@@ -498,7 +525,8 @@ One PDF may hold several months. `201`:
   "creditLimit": "50000.00", "availableCredit": "41000.00",
   "totalDue": "9000.00", "minimumDue": "450.00",
   "openingBalance": "7000.00", "closingBalance": "9000.00",
-  "lineCount": 31, "unmatchedPayments": 1, "importedAt": "2026-09-24T12:00:00.000Z"
+  "lineCount": 31, "unmatchedPayments": 1, "importedAt": "2026-09-24T12:00:00.000Z",
+  "fileId": "uuid or null"
 }
 ```
 

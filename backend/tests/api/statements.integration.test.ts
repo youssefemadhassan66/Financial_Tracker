@@ -39,6 +39,16 @@ async function newUser() {
     sms: (body: string, receivedAt: string) =>
       request(app).post('/api/ingest/sms').set('X-Device-Key', deviceKey).send({ sender: 'CIB', body, receivedAt }),
     get: (path: string) => as(request(app).get(path)),
+    del: (path: string) => as(request(app).delete(path)),
+    /** The raw bytes of a response, e.g. a PDF. */
+    bytes: (path: string) =>
+      as(request(app).get(path))
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => done(null, Buffer.concat(chunks)));
+        }),
     post: (path: string, body: object) => as(request(app).post(path)).send(body),
     upload: (accountId: string, pdf: Uint8Array | string, type = 'application/pdf') =>
       as(request(app).post(`/api/accounts/${accountId}/statements`)).set('Content-Type', type).send(Buffer.from(pdf)),
@@ -53,7 +63,11 @@ const balance = (top: number, which: string, amount: string): PdfText[] => [
 
 /** July 2026, card 1111: 1000 + 450 + 25 + 0.83 - 275 - 100 = 1100.83. */
 function julyPdf(card = '1111'): Uint8Array {
-  return buildPdf([
+  return buildPdf(julyPages(card));
+}
+
+function julyPages(card = '1111'): PdfText[][] {
+  return [
     [
       ...statementSummary({ period: 'Jul-26', due: '2026-08-10', total: '1100.83', card }),
       ...balance(480, 'OPENING', '1,000.00'),
@@ -69,7 +83,7 @@ function julyPdf(card = '1111'): Uint8Array {
       { x: 530, top: 72, text: '12.50' },
       ...balance(100, 'CLOSING', '1100.83'),
     ],
-  ]);
+  ];
 }
 
 suite('credit card statement import', () => {
@@ -278,6 +292,7 @@ suite('credit card statement import', () => {
         openingBalance: '0.00',
         closingBalance: '0.00',
         lines: [],
+        installments: [],
       },
       lines: [],
       newTransactions: [],
@@ -309,5 +324,90 @@ suite('credit card statement import', () => {
   it("treats another user's card as not found", async () => {
     expect((await other.upload(card, julyPdf())).status).toBe(404);
     expect((await other.get(`/api/accounts/${card}/statements`)).status).toBe(404);
+  });
+});
+
+/** The July statement with an installment table after it: one FAKE plan, payment 2 of 6. */
+function julyPdfWithPlan(): Uint8Array {
+  const pages = [...(julyPages() as PdfText[][])];
+  pages[1] = [
+    ...pages[1]!,
+    { x: 44, top: 140, text: 'TEST PHONE' },
+    { x: 117, top: 140, text: '11/06' },
+    { x: 194, top: 140, text: '750.00' },
+    { x: 271, top: 140, text: '.00' },
+    { x: 347, top: 140, text: '750.00' },
+    { x: 424, top: 140, text: '2' },
+    { x: 513, top: 140, text: '6' },
+  ];
+  return buildPdf(pages);
+}
+
+suite('kept statement files and installment plans', () => {
+  it('keeps the PDF, adds its plans once, and lets only you open or delete it', async () => {
+    const u = await newUser();
+    const stranger = await newUser();
+    const cardId = (await u.post('/api/accounts', { name: 'Plan Visa', type: 'credit_card', currency: 'EGP', last4s: ['1111'] }))
+      .body.account.id as string;
+    const pdf = julyPdfWithPlan();
+
+    const first = await u.upload(cardId, pdf).set('X-File-Name', encodeURIComponent('July statement.pdf'));
+    expect(first.status).toBe(201);
+    expect(first.body.installmentPlans).toEqual({ added: 1, alreadyKnown: 0 });
+    const fileId = first.body.fileId as string;
+
+    const plans = (await u.get('/api/installments')).body.plans as Record<string, unknown>[];
+    expect(plans).toHaveLength(1);
+    expect(plans[0]).toMatchObject({
+      name: 'TEST PHONE',
+      provider: 'CIB',
+      installmentAmount: '750.00',
+      totalInstallments: 6,
+      // Payment 2 is due with this statement (10 Aug), so payment 1 was due 10 Jul.
+      firstDueDate: '2026-07-10',
+      accountId: cardId,
+    });
+
+    // The same file again: nothing new, same kept file.
+    const again = await u.upload(cardId, pdf);
+    expect(again.body.statements[0].status).toBe('already-imported');
+    expect(again.body.installmentPlans).toEqual({ added: 0, alreadyKnown: 1 });
+    expect(again.body.fileId).toBe(fileId);
+    expect((await u.get('/api/installments')).body.plans).toHaveLength(1);
+
+    const files = (await u.get('/api/statement-files')).body.files as Record<string, unknown>[];
+    expect(files).toEqual([
+      expect.objectContaining({ id: fileId, accountId: cardId, fileName: 'July statement.pdf', sizeBytes: pdf.byteLength, periods: ['2026-07'] }),
+    ]);
+    expect(files[0]).not.toHaveProperty('content');
+    expect((await u.get(`/api/accounts/${cardId}/statements`)).body.statements[0].fileId).toBe(fileId);
+
+    const content = await u.bytes(`/api/statement-files/${fileId}/content`);
+    expect(content.status).toBe(200);
+    expect(content.headers['content-type']).toBe('application/pdf');
+    expect(content.headers['cache-control']).toContain('no-store');
+    expect(Buffer.compare(content.body as Buffer, Buffer.from(pdf))).toBe(0);
+
+    expect((await stranger.get(`/api/statement-files/${fileId}/content`)).status).toBe(404);
+    expect((await stranger.del(`/api/statement-files/${fileId}`)).status).toBe(404);
+    expect((await stranger.get('/api/statement-files')).body.files).toEqual([]);
+
+    // Deleting the file keeps the month it was read from.
+    expect((await u.del(`/api/statement-files/${fileId}`)).status).toBe(204);
+    expect((await u.get('/api/statement-files')).body.files).toEqual([]);
+    const statements = (await u.get(`/api/accounts/${cardId}/statements`)).body.statements as Record<string, unknown>[];
+    expect(statements).toHaveLength(1);
+    expect(statements[0]!.fileId).toBeNull();
+  });
+
+  it('never keeps a file that is not a statement of the card', async () => {
+    const u = await newUser();
+    const cardId = (await u.post('/api/accounts', { name: 'Other Visa', type: 'credit_card', currency: 'EGP', last4s: ['2222'] }))
+      .body.account.id as string;
+    expect((await u.upload(cardId, buildPdf([[{ x: 30, top: 100, text: 'Hello' }]]))).status).toBeGreaterThanOrEqual(400);
+    // Card 1111's statement on a 2222 card is refused.
+    expect((await u.upload(cardId, julyPdfWithPlan())).status).toBeGreaterThanOrEqual(400);
+    expect((await u.get('/api/statement-files')).body.files).toEqual([]);
+    expect((await u.get('/api/installments')).body.plans).toEqual([]);
   });
 });
