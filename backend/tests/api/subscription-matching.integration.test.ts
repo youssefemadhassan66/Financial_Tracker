@@ -4,7 +4,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildContainer } from '../../src/api/container.js';
 import { createServer } from '../../src/api/server.js';
 import { getPrismaClient } from '../../src/infrastructure/persistence/prisma-client.js';
-import { systemClock } from '../../src/infrastructure/system-clock.js';
 import { BANK_CATALOG } from '../../src/domain/sms/banks/index.js';
 import { databaseAvailable, PASSWORD, testConfig } from './helpers.js';
 
@@ -14,7 +13,11 @@ const suite = hasDb ? describe : describe.skip;
 
 const config = testConfig();
 const prisma = getPrismaClient();
-const app = createServer(buildContainer(config, prisma, systemClock, BANK_CATALOG), config);
+// A fixed "today": the charges below are dated September 2026, and "missed
+// charge" depends on how many billing dates have passed. With the real clock
+// this test started failing once October's billing date went by.
+const clock = { now: () => new Date('2026-09-20T12:00:00Z') };
+const app = createServer(buildContainer(config, prisma, clock, BANK_CATALOG), config);
 const emails: string[] = [];
 
 afterAll(async () => {
