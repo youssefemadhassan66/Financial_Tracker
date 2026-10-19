@@ -322,3 +322,51 @@ export interface ReprocessResult {
   awaitingStatement: number;
   next: string | null;
 }
+
+// Budgets (API.md section 12)
+
+export type BudgetState = 'ok' | 'near' | 'over';
+
+export interface BudgetDto {
+  categoryId: string;
+  categoryName: string;
+  currency: Currency;
+  limit: string;
+  spent: string;
+  /** Negative once over the limit. */
+  remaining: string;
+  /** For drawing only; show the strings. */
+  percentUsed: number;
+  state: BudgetState;
+}
+
+export interface BudgetsView {
+  month: string;
+  period: { from: string; to: string };
+  daysLeft: number;
+  budgets: BudgetDto[];
+}
+
+// Installment plans (API.md section 13)
+
+export interface InstallmentPlanDto {
+  id: string;
+  name: string;
+  provider: string | null;
+  installmentAmount: string;
+  currency: Currency;
+  totalInstallments: number;
+  paidInstallments: number;
+  firstDueDate: string;
+  nextDueDate: string | null;
+  endDate: string;
+  totalCost: string;
+  remainingAmount: string;
+  status: 'active' | 'completed' | 'cancelled';
+  accountId: string | null;
+}
+
+export interface InstallmentsView {
+  plans: InstallmentPlanDto[];
+  totals: { currency: Currency; monthly: string; remaining: string }[];
+}
