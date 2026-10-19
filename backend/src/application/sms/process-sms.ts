@@ -1,0 +1,317 @@
+import { randomUUID } from 'node:crypto';
+import { Money } from '../../domain/money.js';
+import { Transaction } from '../../domain/transaction.js';
+import { canBeCategorized } from '../../domain/transaction-kind.js';
+import { defaultCountsAsSpending } from '../../domain/spending-policy.js';
+import { normalizeMerchantKey } from '../../domain/merchant-key.js';
+import { DomainError } from '../../domain/errors.js';
+import { newTransactionId, type UserId } from '../../domain/ids.js';
+import { isTransferLeg, transactionShapeOf, type ParsedSms, type StandaloneSmsEvent } from '../../domain/sms/sms-template.js';
+import type { Account } from '../../domain/account.js';
+import { NotFoundError } from '../errors.js';
+import type { Clock } from '../ports/clock.js';
+import type {
+  AccountRepository,
+  AvailableBalanceRepository,
+  CategoryRepository,
+  UserSettingsRepository,
+} from '../ports/finance.js';
+import type {
+  MerchantCategoryRepository,
+  ParsePayload,
+  RawMessageStatus,
+  RawMessageView,
+  SmsInbox,
+  SmsParser,
+} from '../ports/sms.js';
+import { TransferPairing } from './transfer-pairing.js';
+
+export type ProcessOutcome =
+  /** pairedMessageId: set when this message completed a transfer pair. */
+  | { status: 'parsed'; transactionId: string; pairedMessageId?: string }
+  | { status: 'ignored' | 'unparsed' | 'awaiting_pair' | 'awaiting_statement'; reason: string }
+  | { status: 'already-processed' };
+
+export const AWAITING_STATEMENT_REASON =
+  'Charged in another currency; the card statement will show the amount billed in your currency';
+
+/**
+ * Turns ONE stored SMS into a transaction, or records why it could not.
+ *
+ * Safe to run any number of times on the same message: a message that
+ * is already a transaction is left alone, and the database guarantees
+ * one transaction per message even if two runs race.
+ */
+export class ProcessRawSms {
+  constructor(
+    private readonly inbox: SmsInbox,
+    private readonly parser: SmsParser,
+    private readonly accounts: AccountRepository,
+    private readonly categories: CategoryRepository,
+    private readonly merchantCategories: MerchantCategoryRepository,
+    private readonly settings: UserSettingsRepository,
+    private readonly balances: AvailableBalanceRepository,
+    private readonly clock: Clock,
+  ) {
+    this.pairing = new TransferPairing(inbox, accounts, clock);
+  }
+
+  private readonly pairing: TransferPairing;
+
+  async execute(userId: UserId, rawMessageId: string): Promise<ProcessOutcome> {
+    const message = await this.inbox.findForUser(rawMessageId, userId);
+    if (message === null) {
+      throw new NotFoundError('Message not found');
+    }
+    if (message.status === 'parsed') {
+      return { status: 'already-processed' };
+    }
+
+    const result = await this.parser.parse(message.sender, message.body);
+
+    if (result.outcome === 'not-transaction') {
+      await this.inbox.markNotTransaction(message.id, userId, 'ignored', result.reason, null);
+      return { status: 'ignored', reason: result.reason };
+    }
+    if (result.outcome === 'unrecognized') {
+      return this.unparsed(message.id, userId, result.reason, null);
+    }
+
+    const payload: ParsePayload = { templateId: result.templateId, ...result.parsed };
+    const parsed = result.parsed;
+
+    let transaction: Transaction;
+    let account: Account;
+    try {
+      account = await this.routeToAccount(userId, parsed);
+      const event = parsed.event;
+      if (parsed.currency !== account.currency) {
+        // e.g. a USD Claude charge on an EGP card. The bank converts at
+        // its own rate, which the SMS does not state; recording the USD
+        // figure in an EGP account would be wrong by ~50x. A card
+        // statement shows the billed amount, so a card charge waits for
+        // it. Anything else has no statement to wait for.
+        if (account.type === 'credit_card' && (event === 'purchase' || event === 'refund')) {
+          return await this.awaitStatement(message.id, userId, { ...payload, accountId: account.id });
+        }
+        throw new DomainError(
+          `A ${parsed.currency} ${event} on a ${account.currency} account needs currency conversion, which is not supported`,
+        );
+      }
+      if (isTransferLeg(event)) {
+        // Half of an internal transfer: never a transaction on its own.
+        assertLegAccountType(event, account);
+        return await this.pairing.offerLeg(
+          userId,
+          message,
+          event,
+          account,
+          Money.create(parsed.amount, account.currency),
+          payload,
+        );
+      }
+      transaction = await this.buildTransaction(userId, { ...parsed, event }, account, message.receivedAt);
+    } catch (error) {
+      // A DomainError here is a fact about THIS message (no matching
+      // account, a merchant name with no letters): record it and move
+      // on. Anything else is a real failure and must surface.
+      if (error instanceof DomainError) {
+        return this.unparsed(message.id, userId, error.message, payload);
+      }
+      throw error;
+    }
+
+    const saved = await this.inbox.completeWithTransaction(message.id, userId, transaction, payload);
+    if (saved !== 'saved') {
+      return { status: 'already-processed' };
+    }
+    await this.recordAvailable(account, parsed, transaction.occurredAt);
+    return { status: 'parsed', transactionId: transaction.id };
+  }
+
+  /**
+   * Keeps the balance the SMS reported, if any. Only after the save, so
+   * only the run that won the message records it. Not in the same
+   * database transaction on purpose: it is a side note, and the next SMS
+   * brings a fresh one anyway.
+   */
+  private async recordAvailable(account: Account, parsed: ParsedSms, reportedAt: Date): Promise<void> {
+    // "Available EGP 50,000" next to a USD account is some other number,
+    // not this account's balance.
+    if (parsed.availableAmount === null || parsed.availableCurrency !== account.currency) {
+      return;
+    }
+    await this.balances.record(account, Money.create(parsed.availableAmount, account.currency), reportedAt);
+  }
+
+  private async unparsed(id: string, userId: UserId, reason: string, payload: ParsePayload | null): Promise<ProcessOutcome> {
+    await this.inbox.markNotTransaction(id, userId, 'unparsed', reason, payload);
+    return { status: 'unparsed', reason };
+  }
+
+  private async routeToAccount(userId: UserId, parsed: ParsedSms): Promise<Account> {
+    // Route by card digits. Guessing an account when the SMS names none
+    // would put money in the wrong place with no visible error, so an
+    // SMS without digits waits for a human instead.
+    if (parsed.last4 === null) {
+      throw new DomainError('The SMS names no card or account digits, so it cannot be matched to an account');
+    }
+    const digits = parsed.last4;
+    const matches = (await this.accounts.listForUser(userId)).filter(
+      (a) => !a.isArchived() && a.hasLast4(digits),
+    );
+    if (matches.length === 0) {
+      throw new DomainError(
+        `No active account ends in ${digits}. Add ${digits} to the account's card/account digits, then reprocess.`,
+      );
+    }
+    if (matches.length > 1) {
+      throw new DomainError(`More than one active account ends in ${digits}; cannot tell which one`);
+    }
+    return matches[0]!;
+  }
+
+  private async awaitStatement(id: string, userId: UserId, payload: ParsePayload): Promise<ProcessOutcome> {
+    const parked = await this.inbox.markNotTransaction(id, userId, 'awaiting_statement', AWAITING_STATEMENT_REASON, payload);
+    if (!parked) {
+      return { status: 'already-processed' };
+    }
+    return { status: 'awaiting_statement', reason: AWAITING_STATEMENT_REASON };
+  }
+
+  private async buildTransaction(
+    userId: UserId,
+    parsed: ParsedSms & { event: StandaloneSmsEvent },
+    account: Account,
+    receivedAt: Date,
+  ): Promise<Transaction> {
+
+    const { kind, direction } = transactionShapeOf(parsed.event);
+    const merchantKey = normalizeMerchantKey(parsed.merchant);
+    const policy = await this.settings.getSpendingPolicy(userId);
+
+    // The phone's clock may run up to a few minutes ahead of ours, and a
+    // transaction may not be dated in the future. Cap at "now".
+    const now = this.clock.now();
+    const occurredAt = receivedAt.getTime() > now.getTime() ? now : receivedAt;
+
+    const transaction = Transaction.create({
+      id: newTransactionId(randomUUID()),
+      userId,
+      accountId: account.id,
+      amount: Money.create(parsed.amount, account.currency),
+      direction,
+      kind,
+      countsAsSpending: defaultCountsAsSpending(kind, policy),
+      merchantKey,
+      merchantRaw: parsed.merchant,
+      occurredAt,
+      source: 'sms',
+    });
+
+    if (canBeCategorized(kind)) {
+      const categoryId = await this.merchantCategories.findCategoryId(userId, merchantKey);
+      if (categoryId !== null) {
+        // The remembered category must still exist, still be yours, and
+        // fit the money's direction: an income category on a purchase
+        // would corrupt both the spending and the income report.
+        const category = await this.categories.findForUser(categoryId, userId);
+        const wanted = kind === 'income' ? 'income' : 'spending';
+        if (category !== null && category.kind === wanted) {
+          transaction.categorize(category.id);
+        }
+      }
+    }
+
+    return transaction;
+  }
+}
+
+export interface ReprocessSummary {
+  processed: number;
+  parsed: number;
+  unparsed: number;
+  ignored: number;
+  /** Transfer halves still waiting for their other half. */
+  awaitingPair: number;
+  /** Foreign card charges waiting for the card statement. */
+  awaitingStatement: number;
+  /** Pass back as `after` to continue; null when everything was covered. */
+  next: string | null;
+}
+
+/** Hard cap per call, so one request cannot run for minutes. */
+export const MAX_REPROCESS_BATCH = 200;
+
+/**
+ * Re-runs every stored message that is not yet a transaction. Use after
+ * adding card digits to an account or after new bank templates ship.
+ */
+export class ReprocessSms {
+  constructor(
+    private readonly inbox: SmsInbox,
+    private readonly processOne: ProcessRawSms,
+  ) {}
+
+  async execute(userId: UserId, options: { after?: string; limit?: number } = {}): Promise<ReprocessSummary> {
+    const limit = Math.min(options.limit ?? MAX_REPROCESS_BATCH, MAX_REPROCESS_BATCH);
+    const ids = await this.inbox.listIdsNeedingParse(userId, limit, options.after);
+    const summary: ReprocessSummary = {
+      processed: 0,
+      parsed: 0,
+      unparsed: 0,
+      ignored: 0,
+      awaitingPair: 0,
+      awaitingStatement: 0,
+      // A full page means there may be more; a short page means done.
+      next: ids.length === limit ? (ids[ids.length - 1] ?? null) : null,
+    };
+
+    // One at a time, oldest first: they share accounts and settings, and
+    // a backlog of a few hundred regex runs does not need parallelism.
+    const waitingInBatch = new Set<string>();
+    for (const id of ids) {
+      const outcome = await this.processOne.execute(userId, id);
+      summary.processed += 1;
+      if (outcome.status === 'awaiting_pair') {
+        summary.awaitingPair += 1;
+        waitingInBatch.add(id);
+      } else if (outcome.status === 'awaiting_statement') {
+        summary.awaitingStatement += 1;
+      } else if (outcome.status !== 'already-processed') {
+        summary[outcome.status] += 1;
+      }
+      // A half counted as waiting earlier in this batch just got its
+      // partner: report where it ended up, not where it passed through.
+      if (outcome.status === 'parsed' && outcome.pairedMessageId !== undefined && waitingInBatch.delete(outcome.pairedMessageId)) {
+        summary.awaitingPair -= 1;
+        summary.parsed += 1;
+      }
+    }
+    return summary;
+  }
+}
+
+/** Your stored SMS, newest first, with why each did or did not parse. */
+export class ListSmsMessages {
+  constructor(private readonly inbox: SmsInbox) {}
+
+  execute(userId: UserId, filter: { status?: RawMessageStatus; limit: number }): Promise<RawMessageView[]> {
+    return this.inbox.list(userId, filter);
+  }
+}
+
+/**
+ * A transfer out must leave a bank account, and a card payment must land
+ * on a credit card. The wrong type means the digits point at the wrong
+ * account; pairing it anyway would move money between the wrong places.
+ */
+function assertLegAccountType(event: 'transfer-out' | 'card-payment', account: Account): void {
+  const isCard = account.type === 'credit_card';
+  if (event === 'card-payment' && !isCard) {
+    throw new DomainError(`Account "${account.getName()}" is not a credit card, but this SMS is a card payment`);
+  }
+  if (event === 'transfer-out' && isCard) {
+    throw new DomainError(`Account "${account.getName()}" is a credit card, but this SMS is a bank account debit`);
+  }
+}
