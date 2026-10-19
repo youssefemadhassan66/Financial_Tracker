@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    name: No private files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse committed secrets, statements and keystores
+        run: |
+          bad=$(git ls-files | grep -iE '(^|/)\.env($|\.)|\.pdf$|\.jks$|\.keystore$|\.pem$|\.apk$|\.dump$' | grep -vE '\.env\.example$' || true)
+          if [ -n "$bad" ]; then
+            echo "These files must never be committed:"
+            echo "$bad"
+            exit 1
+          fi
+
+  backend:
+    name: Backend (typecheck, lint, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: financial
+          POSTGRES_PASSWORD: financial
+          POSTGRES_DB: financial_app
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U financial -d financial_app"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://financial:financial@localhost:5432/financial_app
+      # Throwaway values for the test run only.
+      JWT_ACCESS_SECRET: ci-only-access-secret-not-used-anywhere-else-0001
+      TOKEN_HASH_PEPPER: ci-only-token-pepper-not-used-anywhere-else-0001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  web:
+    name: Web (typecheck, lint, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  android:
+    name: Android (unit tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew testDebugUnitTest --no-daemon
