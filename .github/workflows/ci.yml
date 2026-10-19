@@ -17,7 +17,7 @@ jobs:
     name: No private files
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Refuse committed secrets, statements and keystores
         run: |
           bad=$(git ls-files | grep -iE '(^|/)\.env($|\.)|\.pdf$|\.jks$|\.keystore$|\.pem$|\.apk$|\.dump$' | grep -vE '\.env\.example$' || true)
@@ -51,8 +51,8 @@ jobs:
       JWT_ACCESS_SECRET: ci-only-access-secret-not-used-anywhere-else-0001
       TOKEN_HASH_PEPPER: ci-only-token-pepper-not-used-anywhere-else-0001
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -71,13 +71,15 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      # Route types (LayoutProps, PageProps) are generated, not committed.
+      - run: npx next typegen
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
@@ -90,7 +92,7 @@ jobs:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
