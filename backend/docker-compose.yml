@@ -4,6 +4,10 @@
 # Stop:  docker compose down          (data survives)
 # Reset: docker compose down -v       (data DELETED — the -v drops the volume)
 
+# Fixed project name, so this folder and older checkouts all manage the
+# same container (financial_app_db) instead of clashing over its name.
+name: 46-financial_app
+
 services:
   postgres:
     image: postgres:18-alpine
