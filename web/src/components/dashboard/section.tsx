@@ -24,7 +24,7 @@ export function DashboardSection({
     <section aria-labelledby={headingId} className={cn('rounded-2xl border bg-card', className)}>
       <div className="flex items-start justify-between gap-4 px-5 pt-4 pb-3 sm:px-6">
         <div>
-          <h2 id={headingId} className="font-semibold">
+          <h2 id={headingId} className="font-bold">
             {title}
           </h2>
           {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}

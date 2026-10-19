@@ -42,7 +42,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 bg-background/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-sm md:hidden">
           <div className="flex h-14 items-center justify-between">
-            <Link href="/dashboard" aria-label="Finance, go to dashboard" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            <Link href="/dashboard" aria-label="Masroof, go to dashboard" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
               <Logo />
             </Link>
             <Link

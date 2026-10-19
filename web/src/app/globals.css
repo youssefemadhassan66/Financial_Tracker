@@ -10,9 +10,9 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  --font-heading: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  /* Say-style serif for big titles only; UI text and numbers stay in Geist. */
-  --font-display: var(--font-dm-serif), ui-serif, Georgia, serif;
+  /* Masroof's headings: Plus Jakarta Sans (bold), big titles ExtraBold. */
+  --font-heading: var(--font-jakarta), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-jakarta), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --color-ink: var(--ink);
   --color-ink-foreground: var(--ink-foreground);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -162,6 +162,11 @@
   }
   html {
     @apply font-sans;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-heading);
   }
 }
 

@@ -1,9 +1,9 @@
-# Puts "Start Finance" and "Stop Finance" on the Windows desktop, with the app
+# Puts "Start Masroof" and "Stop Masroof" on the Windows desktop, with the app
 # icon. Run once: right-click > Run with PowerShell.
 
 $ErrorActionPreference = 'Stop'
 $scripts = $PSScriptRoot
-$icon = Join-Path $scripts 'finance.ico'
+$icon = Join-Path $scripts 'masroof.ico'
 $desktop = [Environment]::GetFolderPath('Desktop')
 $shell = New-Object -ComObject WScript.Shell
 
@@ -17,6 +17,6 @@ function New-Shortcut($name, $script, $description) {
   $link.Save()
 }
 
-New-Shortcut 'Start Finance' 'start-local.ps1' 'Start the Finance app (database, API and web app)'
-New-Shortcut 'Stop Finance' 'stop-local.ps1' 'Stop the Finance app'
+New-Shortcut 'Start Masroof' 'start-local.ps1' 'Start the Masroof app (database, API and web app)'
+New-Shortcut 'Stop Masroof' 'stop-local.ps1' 'Stop the Masroof app'
 Write-Host "Shortcuts added to $desktop" -ForegroundColor Green

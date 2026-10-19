@@ -1,12 +1,8 @@
 import { ImageResponse } from 'next/og';
 import { BRAND_ON_PRIMARY, BRAND_PRIMARY } from './brand-colors';
+import { MARK_BUBBLE, MARK_COIN, MARK_STROKE } from './brand-mark';
 
-// The app mark (lucide "piggy-bank") on the indigo brand color.
-const PIGGY_PATHS = [
-  'M11 17h3v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-3a3.16 3.16 0 0 0 2-2h1a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-1a5 5 0 0 0-2-4V3a4 4 0 0 0-3.2 1.6l-.3.4H11a6 6 0 0 0-6 6v1a5 5 0 0 0 2 4v3a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1z',
-  'M16 10h.01',
-  'M2 8v1a2 2 0 0 0 2 2h1',
-];
+// The Masroof mark (message bubble + coin) on the emerald brand color.
 
 /**
  * A square app icon. `maskable` keeps the mark inside the central safe zone
@@ -27,19 +23,9 @@ export function appIcon(size: number, { maskable = false }: { maskable?: boolean
           borderRadius: maskable ? 0 : Math.round(size * 0.22),
         }}
       >
-        <svg
-          width={mark}
-          height={mark}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={BRAND_ON_PRIMARY}
-          strokeWidth={2.25}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          {PIGGY_PATHS.map((d) => (
-            <path key={d} d={d} />
-          ))}
+        <svg width={mark} height={mark} viewBox="0 0 24 24" fill="none">
+          <path d={MARK_BUBBLE} stroke={BRAND_ON_PRIMARY} strokeWidth={MARK_STROKE} strokeLinejoin="round" />
+          <circle cx={MARK_COIN.cx} cy={MARK_COIN.cy} r={MARK_COIN.r} fill={BRAND_ON_PRIMARY} />
         </svg>
       </div>
     ),

@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { BRAND_BACKGROUND_DARK, BRAND_BACKGROUND_LIGHT } from "@/lib/brand-colors";
-import { DM_Serif_Display, Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
@@ -17,24 +17,23 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Big titles only (page titles, the home page), with an italic for the one
-// highlighted word. UI text, labels and numbers stay in Geist.
-const dmSerif = DM_Serif_Display({
-  variable: "--font-dm-serif",
-  weight: "400",
-  style: ["normal", "italic"],
+// Masroof's voice: every heading, ExtraBold for big titles. Body text,
+// labels and numbers stay in Geist (tabular figures for money).
+const jakarta = Plus_Jakarta_Sans({
+  variable: "--font-jakarta",
+  weight: ["600", "700", "800"],
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
   title: {
-    default: "Finance: your bank SMS, sorted",
-    template: "%s · Finance",
+    default: "Masroof: your bank SMS, sorted",
+    template: "%s · Masroof",
   },
   description:
     "A personal finance tracker that turns the SMS your bank already sends into a clear picture of your spending, in EGP and USD.",
   // iPhone "Add to Home Screen" opens full screen, with its own name under the icon.
-  appleWebApp: { capable: true, title: "Finance", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Masroof", statusBarStyle: "default" },
 };
 
 // Phone browser bar color, matching the page background in each theme.
@@ -51,7 +50,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${dmSerif.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${jakarta.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <MotionProvider>

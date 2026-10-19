@@ -46,7 +46,7 @@ export function SubscriptionRow({ sub, today }: { sub: SubscriptionDto; today: s
       <div className="flex items-center gap-3">
         <span
           aria-hidden="true"
-          className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent font-display text-lg text-accent-foreground"
+          className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent font-display text-lg font-bold text-accent-foreground"
         >
           {initial}
         </span>

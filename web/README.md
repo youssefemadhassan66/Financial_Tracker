@@ -50,7 +50,7 @@ and prints the address for your phone. It rebuilds only after code changes.
 to this one as `../46-financial_app`.
 
 Run `scripts/install-shortcuts.ps1` once (right-click > Run with PowerShell) to
-get **Start Finance** and **Stop Finance** on the desktop.
+get **Start Masroof** and **Stop Masroof** on the desktop.
 
 On the phone, open the printed address and add it to the home screen for an app
 icon (iPhone: Share > Add to Home Screen; Android Chrome: menu > Add to Home

@@ -234,7 +234,7 @@ function KeyStep({
                   ? 'This phone now sends your bank SMS automatically. Nothing else to set up.'
                   : phoneSave === 'failed'
                     ? 'The phone could not save the key. Copy it below and paste it in Phone setup.'
-                    : 'You are in the Finance app: one tap and this phone starts sending bank SMS.'}
+                    : 'You are in the Masroof app: one tap and this phone starts sending bank SMS.'}
               </p>
             </div>
           )}

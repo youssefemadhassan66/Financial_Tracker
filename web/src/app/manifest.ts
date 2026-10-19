@@ -2,13 +2,13 @@ import type { MetadataRoute } from 'next';
 import { BRAND_BACKGROUND_LIGHT, BRAND_PRIMARY } from '@/lib/brand-colors';
 
 /**
- * Makes the app installable: "Add to Home Screen" gives a Finance icon that
+ * Makes the app installable: "Add to Home Screen" gives a Masroof icon that
  * opens full screen, straight on the dashboard.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Finance: your bank SMS, sorted',
-    short_name: 'Finance',
+    name: 'Masroof: your bank SMS, sorted',
+    short_name: 'Masroof',
     description: 'Your bank SMS and card statements turned into a clear picture of your spending.',
     start_url: '/dashboard',
     scope: '/',

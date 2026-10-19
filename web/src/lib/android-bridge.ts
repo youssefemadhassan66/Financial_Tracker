@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * The Finance Android app shows this web app full screen and adds a small
+ * The Masroof Android app shows this web app full screen and adds a small
  * `window.FinanceAndroid` object (only on pages from its own server). With it
  * the web app can hand a new device key straight to the phone, which stores
  * it encrypted, so the key never has to be copied by hand.
@@ -34,7 +34,7 @@ export function saveKeyOnThisPhone(key: string): boolean {
 
 const noSubscribe = () => () => {};
 
-/** True inside the Finance Android app. False while rendering on the server, so hydration matches. */
+/** True inside the Masroof Android app. False while rendering on the server, so hydration matches. */
 export function useIsAndroidApp(): boolean {
   return useSyncExternalStore(noSubscribe, () => androidBridge() !== null, () => false);
 }
