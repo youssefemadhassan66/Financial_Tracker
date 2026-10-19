@@ -6,12 +6,25 @@
     <color name="surface_light">#F4F4F6</color>
     <color name="surface_dark">#111113</color>
 
-    <style name="Theme.Finance" parent="Theme.Material3.DayNight">
+    <!-- No system action bar: screens draw edge to edge (Android 15+) and place their own toolbar. -->
+    <style name="Theme.Finance" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/brand</item>
         <item name="colorOnPrimary">@color/brand_on</item>
         <item name="colorSecondaryContainer">#D1FAE5</item>
         <item name="colorOnSecondaryContainer">#064E3B</item>
         <item name="android:colorBackground">@color/surface_light</item>
+        <!-- Neutral surfaces: Material's defaults are tinted purple. -->
+        <item name="colorSurface">#FFFFFF</item>
+        <item name="colorOnSurface">#1A1A1F</item>
+        <item name="colorOnSurfaceVariant">#5B5B66</item>
+        <item name="colorSurfaceVariant">#ECECF0</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFF</item>
+        <item name="colorSurfaceContainerLow">#FFFFFF</item>
+        <item name="colorSurfaceContainer">#F4F4F6</item>
+        <item name="colorSurfaceContainerHigh">#EEEEF1</item>
+        <item name="colorSurfaceContainerHighest">#E8E8EC</item>
+        <item name="colorOutline">#C4C4CC</item>
+        <item name="colorOutlineVariant">#E2E2E8</item>
     </style>
 
     <style name="SetupCard" parent="Widget.Material3.CardView.Outlined">

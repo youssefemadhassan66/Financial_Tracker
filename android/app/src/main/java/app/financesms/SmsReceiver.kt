@@ -15,13 +15,14 @@ class SmsReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
         val parts = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
         val banks = Settings(context).bankSenders
+        val now = System.currentTimeMillis()
 
         parts.filterNotNull()
             .groupBy { it.originatingAddress.orEmpty() }
             .forEach { (sender, messages) ->
                 if (!SmsRules.isBankSender(sender, banks)) return@forEach
                 val body = messages.joinToString("") { it.messageBody.orEmpty() }
-                val receivedAt = SmsRules.isoWithOffset(messages.first().timestampMillis)
+                val receivedAt = SmsRules.isoWithOffset(SmsRules.receivedAtMillis(messages.first().timestampMillis, now))
                 SmsQueue.enqueue(context, sender.take(SmsRules.MAX_SENDER), body, receivedAt)
             }
     }

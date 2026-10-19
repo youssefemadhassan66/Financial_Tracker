@@ -27,12 +27,17 @@ data class PendingSms(val id: String, val sender: String, val body: String, val 
  * Bank SMS waiting to be sent, saved in the app's private storage so they
  * survive the phone being away from home Wi-Fi, the PC being off, or a reboot.
  */
-class PendingStore(context: Context) {
-    private val file = File(context.applicationContext.filesDir, "pending-sms.json")
+class PendingStore(context: Context, fileName: String = "pending-sms.json") {
+    private val file = File(context.applicationContext.filesDir, fileName)
 
     fun add(sender: String, body: String, receivedAt: String) = synchronized(LOCK) {
         write(read() + PendingSms(UUID.randomUUID().toString(), sender, body, receivedAt))
     }
+
+    fun addAll(items: List<PendingSms>) = synchronized(LOCK) { write(read() + items) }
+
+    /** Removes and returns everything (used to move skipped messages back to the queue). */
+    fun takeAll(): List<PendingSms> = synchronized(LOCK) { read().also { write(emptyList()) } }
 
     fun first(): PendingSms? = synchronized(LOCK) { read().firstOrNull() }
 
@@ -101,6 +106,21 @@ object SmsQueue {
 
     fun waitingCount(context: Context): Int = PendingStore(context).count()
 
+    /**
+     * Messages the server refused are never deleted: they wait here, and the
+     * user can send them again from Phone setup (for example after a fix).
+     */
+    fun skipped(context: Context) = PendingStore(context, "skipped-sms.json")
+
+    fun retrySkipped(context: Context): Int {
+        val items = skipped(context).takeAll()
+        if (items.isNotEmpty()) {
+            PendingStore(context).addAll(items)
+            flushNow(context)
+        }
+        return items.size
+    }
+
     private fun networkConstraint() = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 }
 
@@ -128,8 +148,10 @@ class FlushWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
                     settings.keyRejected = false
                 }
                 SmsRules.Outcome.DROP -> {
+                    // Kept, not lost: Phone setup can send skipped messages again.
+                    SmsQueue.skipped(applicationContext).addAll(listOf(sms))
                     store.remove(sms.id)
-                    settings.lastProblem = "The server refused one message (HTTP $status), so it was skipped."
+                    settings.lastProblem = "The server refused one message (HTTP $status). It was set aside; you can try it again."
                 }
                 SmsRules.Outcome.KEY_REJECTED -> {
                     // Messages stay queued until a new key is saved in Phone setup.

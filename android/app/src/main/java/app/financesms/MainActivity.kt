@@ -34,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipe: SwipeRefreshLayout
     private lateinit var errorView: View
     private var loadedServer: String? = null
+    private var sentToFirstSetup = false
 
     /** True only while a page from the configured server is shown (checked by the JS bridge). */
     @Volatile private var trustedPage = false
@@ -103,7 +104,12 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (settings.serverUrl == null) {
-            openSetup()
+            // First run sends the user to Phone setup. Coming back still
+            // without an address means they backed out: close instead of looping.
+            if (sentToFirstSetup) finish() else {
+                sentToFirstSetup = true
+                openSetup()
+            }
             return
         }
         load(force = false)

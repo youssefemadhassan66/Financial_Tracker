@@ -36,11 +36,12 @@ class SetupActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_setup)
         settings = Settings(this)
+        setSupportActionBar(findViewById(R.id.toolbar))
         supportActionBar?.setDisplayHomeAsUpEnabled(settings.serverUrl != null)
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.setup_root)) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
-            view.setPadding(bars.left, 0, bars.right, bars.bottom)
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
 
@@ -65,6 +66,11 @@ class SetupActivity : AppCompatActivity() {
         findViewById<Button>(R.id.send_now).setOnClickListener {
             SmsQueue.flushNow(this)
             Toast.makeText(this, R.string.sending, Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.retry_skipped).setOnClickListener {
+            SmsQueue.retrySkipped(this)
+            Toast.makeText(this, R.string.sending, Toast.LENGTH_SHORT).show()
+            refresh()
         }
         findViewById<Button>(R.id.import_inbox).setOnClickListener { importInbox() }
         findViewById<Button>(R.id.done).setOnClickListener { if (saveForm()) finish() }
@@ -166,8 +172,11 @@ class SetupActivity : AppCompatActivity() {
         findViewById<View>(R.id.restricted_help).visibility = if (smsOk) View.GONE else View.VISIBLE
 
         val waiting = SmsQueue.waitingCount(this)
+        val skipped = SmsQueue.skipped(this).count()
         val last = settings.lastSentAt
         val lines = mutableListOf(resources.getQuantityString(R.plurals.waiting, waiting, waiting))
+        if (skipped > 0) lines += resources.getQuantityString(R.plurals.skipped, skipped, skipped)
+        findViewById<View>(R.id.retry_skipped).visibility = if (skipped > 0) View.VISIBLE else View.GONE
         lines += if (last > 0) {
             getString(R.string.last_sent, DateUtils.getRelativeTimeSpanString(last).toString())
         } else {

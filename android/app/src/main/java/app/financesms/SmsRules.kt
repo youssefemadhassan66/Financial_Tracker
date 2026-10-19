@@ -28,6 +28,14 @@ object SmsRules {
         return banks.any { it.isNotBlank() && s.contains(it.trim().lowercase()) }
     }
 
+    /**
+     * When the SMS arrived. The network's own timestamp is the best guess of
+     * when the bank sent it, but some networks (and the emulator) stamp SMS in
+     * the future, which the server refuses. Then the phone's clock wins.
+     */
+    fun receivedAtMillis(networkMillis: Long, phoneNowMillis: Long): Long =
+        if (networkMillis <= 0 || networkMillis > phoneNowMillis) phoneNowMillis else networkMillis
+
     /** 1760000000000 -> "2025-10-09T11:53:20+03:00" in the phone's time zone. */
     fun isoWithOffset(epochMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String =
         DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(

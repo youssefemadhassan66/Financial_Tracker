@@ -39,6 +39,14 @@ class SmsRulesTest {
     }
 
     @Test
+    fun `a network time in the future is replaced by the phone's clock`() {
+        val now = 1_790_766_300_000L
+        assertEquals(now - 60_000, SmsRules.receivedAtMillis(now - 60_000, now)) // normal: network time
+        assertEquals(now, SmsRules.receivedAtMillis(now + 3_600_000, now)) // an hour ahead: phone time
+        assertEquals(now, SmsRules.receivedAtMillis(0, now)) // missing
+    }
+
+    @Test
     fun `server address is cleaned or refused`() {
         assertEquals("http://192.168.1.20:3001", SmsRules.normalizeServerUrl(" 192.168.1.20:3001/ "))
         assertEquals("https://finance.example.com", SmsRules.normalizeServerUrl("https://finance.example.com"))

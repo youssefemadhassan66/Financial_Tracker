@@ -1,10 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Finance" parent="Theme.Material3.DayNight">
+    <style name="Theme.Finance" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">#34D399</item>
         <item name="colorOnPrimary">#052E1F</item>
         <item name="colorSecondaryContainer">#14352A</item>
         <item name="colorOnSecondaryContainer">#A7F3D0</item>
         <item name="android:colorBackground">@color/surface_dark</item>
+        <item name="colorSurface">#1A1A1D</item>
+        <item name="colorOnSurface">#F1F1F4</item>
+        <item name="colorOnSurfaceVariant">#B4B4BE</item>
+        <item name="colorSurfaceVariant">#2A2A2F</item>
+        <item name="colorSurfaceContainerLowest">#141416</item>
+        <item name="colorSurfaceContainerLow">#1A1A1D</item>
+        <item name="colorSurfaceContainer">#1E1E22</item>
+        <item name="colorSurfaceContainerHigh">#25252A</item>
+        <item name="colorSurfaceContainerHighest">#2D2D33</item>
+        <item name="colorOutline">#4A4A52</item>
+        <item name="colorOutlineVariant">#33333A</item>
     </style>
 </resources>
