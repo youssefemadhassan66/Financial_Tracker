@@ -137,4 +137,50 @@ describe('ConnectPhoneSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create key' }));
     expect(await screen.findByText('Name is not allowed')).toBeInTheDocument();
   });
+
+  describe('inside the Finance Android app', () => {
+    afterEach(() => {
+      delete (window as unknown as { FinanceAndroid?: unknown }).FinanceAndroid;
+    });
+
+    function installBridge(saves: boolean) {
+      const bridge = {
+        isApp: () => true,
+        hasDeviceKey: () => false,
+        saveDeviceKey: vi.fn(() => saves),
+        openPhoneSetup: vi.fn(),
+      };
+      (window as unknown as { FinanceAndroid: typeof bridge }).FinanceAndroid = bridge;
+      return bridge;
+    }
+
+    it('hands the key to the phone in one tap, which counts as saved', async () => {
+      const bridge = installBridge(true);
+      render(<Harness client={client} onOpenChange={vi.fn()} />);
+      await createKey();
+      expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Use on this phone' }));
+
+      expect(bridge.saveDeviceKey).toHaveBeenCalledWith(FAKE_KEY);
+      expect(await screen.findByText(/This phone now sends your bank SMS automatically/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled();
+      expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it('keeps Done disabled and explains when the phone could not save it', async () => {
+      installBridge(false);
+      render(<Harness client={client} onOpenChange={vi.fn()} />);
+      await createKey();
+      fireEvent.click(screen.getByRole('button', { name: 'Use on this phone' }));
+      expect(await screen.findByText(/The phone could not save the key/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled();
+    });
+  });
+
+  it('shows no phone button in a normal browser', async () => {
+    render(<Harness client={client} onOpenChange={vi.fn()} />);
+    await createKey();
+    expect(screen.queryByRole('button', { name: 'Use on this phone' })).not.toBeInTheDocument();
+  });
 });

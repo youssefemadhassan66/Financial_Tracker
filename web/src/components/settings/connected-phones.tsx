@@ -8,6 +8,7 @@ import { DashboardSection, RowsSkeleton, SectionError } from '@/components/dashb
 import { FadeIn } from '@/components/motion/fade-in';
 import { Stagger, StaggerItem } from '@/components/motion/stagger';
 import { Button } from '@/components/ui/button';
+import { androidBridge, useIsAndroidApp } from '@/lib/android-bridge';
 import { apiFetch } from '@/lib/api/client';
 import { devicesQuery } from '@/lib/api/finance';
 import type { DeviceDto } from '@/lib/api/types';
@@ -20,11 +21,22 @@ export function ConnectedPhones() {
   const devices = useQuery(devicesQuery);
   const [sheetOpen, setSheetOpen] = React.useState(false);
 
+  // Inside the Finance Android app: a way back to its native Phone setup.
+  const inAndroidApp = useIsAndroidApp();
+
   const connectButton = (
-    <Button onClick={() => setSheetOpen(true)} className="h-10 gap-1.5">
-      <Plus aria-hidden="true" />
-      Connect a phone
-    </Button>
+    <div className="flex flex-wrap gap-2">
+      <Button onClick={() => setSheetOpen(true)} className="h-10 gap-1.5">
+        <Plus aria-hidden="true" />
+        Connect a phone
+      </Button>
+      {inAndroidApp && (
+        <Button variant="outline" onClick={() => androidBridge()?.openPhoneSetup()} className="h-10 gap-1.5">
+          <Smartphone aria-hidden="true" />
+          Phone setup
+        </Button>
+      )}
+    </div>
   );
 
   return (
