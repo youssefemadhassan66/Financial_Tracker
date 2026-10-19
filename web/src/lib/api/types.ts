@@ -282,3 +282,43 @@ export interface CardStatementView {
   unmatchedPayments: number;
   importedAt: string;
 }
+
+// Subscription suggestions (GET /api/subscriptions/suggestions)
+
+export interface SubscriptionSuggestion {
+  merchantKey: string;
+  name: string;
+  amount: string;
+  currency: Currency;
+  cycle: BillingCycle;
+  anchorDate: string;
+  lastChargeDate: string;
+  chargeCount: number;
+  accountId: string | null;
+  transactionIds: string[];
+}
+
+// SMS inbox (API.md section 9)
+
+export interface RawMessageView {
+  id: string;
+  userId: string;
+  sender: string;
+  body: string;
+  receivedAt: string;
+  status: SmsStatus;
+  /** Free-form: show as key/value details, never depend on its keys. */
+  parsedPayload: Record<string, string> | null;
+  parseError: string | null;
+  transactionId: string | null;
+}
+
+export interface ReprocessResult {
+  processed: number;
+  parsed: number;
+  unparsed: number;
+  ignored: number;
+  awaitingPair: number;
+  awaitingStatement: number;
+  next: string | null;
+}

@@ -5,6 +5,9 @@ import type {
   CategoryAnalytics,
   CategoryRecord,
   DeviceDto,
+  RawMessageView,
+  SubscriptionDto,
+  SubscriptionSuggestion,
   SubscriptionSummary,
   TransactionView,
 } from './types';
@@ -111,3 +114,22 @@ export function subscriptionSummaryQuery(days: number) {
     queryFn: () => apiFetch<SubscriptionSummary>(`/api/subscriptions/summary?days=${days}`),
   };
 }
+
+/** Every subscription, any status: the page groups them itself. */
+export const subscriptionsQuery = {
+  queryKey: ['subscriptions', 'list'] as const,
+  queryFn: () =>
+    apiFetch<{ subscriptions: SubscriptionDto[] }>('/api/subscriptions').then((r) => r.subscriptions),
+};
+
+export const subscriptionSuggestionsQuery = {
+  queryKey: ['subscriptions', 'suggestions'] as const,
+  queryFn: () =>
+    apiFetch<{ suggestions: SubscriptionSuggestion[] }>('/api/subscriptions/suggestions').then((r) => r.suggestions),
+};
+
+/** The newest 200 bank messages (the server maximum); the page filters by status itself. */
+export const smsQuery = {
+  queryKey: ['sms', { limit: 200 }] as const,
+  queryFn: () => apiFetch<{ messages: RawMessageView[] }>('/api/sms?limit=200').then((r) => r.messages),
+};
