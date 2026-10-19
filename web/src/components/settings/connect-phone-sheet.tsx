@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { KeyRound, TriangleAlert } from 'lucide-react';
+import { KeyRound, Smartphone, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { FormAlert, SubmitButton } from '@/components/auth/auth-form-parts';
@@ -16,6 +16,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { androidBridge, saveKeyOnThisPhone } from '@/lib/android-bridge';
 import { apiFetch } from '@/lib/api/client';
 import { API_URL } from '@/lib/api/config';
 import { toFormErrors } from '@/lib/api/form-errors';
@@ -192,6 +193,17 @@ function KeyStep({
   // Only rendered after a click, so window exists.
   const endpoint = ingestEndpointUrl(API_URL, window.location.origin);
   const reachability = endpointReachability(endpoint);
+  const inAndroidApp = androidBridge() !== null;
+  const [phoneSave, setPhoneSave] = React.useState<'idle' | 'saved' | 'failed'>('idle');
+
+  const useOnThisPhone = () => {
+    if (saveKeyOnThisPhone(deviceKey)) {
+      setPhoneSave('saved');
+      onCopied(); // the key is safely stored: Done may close the sheet
+    } else {
+      setPhoneSave('failed');
+    }
+  };
 
   return (
     <>
@@ -206,6 +218,26 @@ function KeyStep({
             <KeyRound aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent-foreground" />
             This key is shown only now. If you lose it, revoke this phone and add it again.
           </p>
+          {inAndroidApp && (
+            <div className="space-y-2">
+              <Button
+                type="button"
+                onClick={useOnThisPhone}
+                disabled={phoneSave === 'saved'}
+                className="h-11 w-full gap-1.5 sm:h-10"
+              >
+                <Smartphone aria-hidden="true" />
+                {phoneSave === 'saved' ? 'Saved on this phone' : 'Use on this phone'}
+              </Button>
+              <p role="status" className="text-[0.8rem] text-muted-foreground">
+                {phoneSave === 'saved'
+                  ? 'This phone now sends your bank SMS automatically. Nothing else to set up.'
+                  : phoneSave === 'failed'
+                    ? 'The phone could not save the key. Copy it below and paste it in Phone setup.'
+                    : 'You are in the Finance app: one tap and this phone starts sending bank SMS.'}
+              </p>
+            </div>
+          )}
           <CopyField id="device-key" label="Device key" value={deviceKey} onCopied={onCopied} />
           <div className="flex items-center gap-2">
             <input
