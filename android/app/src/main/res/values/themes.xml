@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Same lavender + indigo as the web app (globals.css). -->
-    <color name="brand">#5D5FD7</color>
-    <color name="brand_on">#FAFAFD</color>
-    <color name="surface_light">#F6F6FB</color>
-    <color name="surface_dark">#121220</color>
+    <!-- Same emerald palette as the web app (globals.css). -->
+    <color name="brand">#047857</color>
+    <color name="brand_on">#FFFFFF</color>
+    <color name="surface_light">#F4F4F6</color>
+    <color name="surface_dark">#111113</color>
 
     <style name="Theme.Finance" parent="Theme.Material3.DayNight">
         <item name="colorPrimary">@color/brand</item>
         <item name="colorOnPrimary">@color/brand_on</item>
-        <item name="colorSecondaryContainer">#E4E3FA</item>
-        <item name="colorOnSecondaryContainer">#22216B</item>
+        <item name="colorSecondaryContainer">#D1FAE5</item>
+        <item name="colorOnSecondaryContainer">#064E3B</item>
         <item name="android:colorBackground">@color/surface_light</item>
     </style>
 
