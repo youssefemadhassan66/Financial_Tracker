@@ -54,7 +54,7 @@ describe('merchantMatches', () => {
   it.each([
     ['TEST STREAM', 'TEST STREAM', true],
     ['NETFLIX', 'NETFLIX COM', true],
-    ['TEST SOFTWARE PLAN', 'TEST SOFTWARE PL', true], // the bank cut the name short
+    ['TEST SOFTWARE PLUS', 'TEST SOFTWARE PL', true], // the bank cut the name short
     ['UBER', 'UBEREATS', false], // a word must end where the key ends
     ['NETFLIX', 'NET', false], // too short to be a cut name
     ['NETFLIX', 'SPOTIFY', false],

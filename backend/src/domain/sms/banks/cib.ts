@@ -8,8 +8,8 @@ import type { SmsIgnoreRule, SmsTemplate } from '../sms-template.js';
 // SMS without it still parses.
 
 export const CIB_TEMPLATES: readonly SmsTemplate[] = [
-  // S1: Your credit card ending with#1111 was charged for EGP 3150.00 at TEST ONLINE SHO on 11/09/26 at 10:15. Card available limit is EGP 10000.00. For more details, please visit https://cib.eg/mb
-  // S2: Your credit card #1111 was charged for USD 21.60 at TEST SOFTWARE PL on 07/09/26 at 11:40. Available limit is 10000.00 and the available international limit to use is EGP 50000
+  // S1: Your credit card ending with#1111 was charged for EGP 3150.00 at TEST ONLINE SHO on 14/08/26 at 10:15. Card available limit is EGP 10000.00. For more details, please visit https://cib.eg/mb
+  // S2: Your credit card #1111 was charged for USD 19.40 at TEST SOFTWARE PL on 05/08/26 at 11:40. Available limit is 10000.00 and the available international limit to use is EGP 50000
   {
     id: 'cib.card-purchase.en.v1',
     bank: 'CIB',

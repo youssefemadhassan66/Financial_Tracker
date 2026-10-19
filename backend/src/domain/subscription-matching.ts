@@ -29,7 +29,7 @@ export type ChargedAmounts = Pick<ChargeToMatch, 'amount' | 'original'>;
  *
  * Equal keys, or the charge's key goes on after the subscription's with
  * more words ("NETFLIX" -> "NETFLIX COM"), or the bank cut the name short
- * ("TEST SOFTWARE PL" for "TEST SOFTWARE PLAN"). A cut name must still be 6
+ * ("TEST SOFTWARE PL" for "TEST SOFTWARE PLUS"). A cut name must still be 6
  * characters or more: "NET" would match every NET-something.
  * "UBER" does NOT match "UBEREATS": a word has to end where the key ends.
  */

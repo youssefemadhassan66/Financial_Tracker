@@ -21,7 +21,7 @@ describe('CIB SMS parsing', () => {
 
   describe('Sample messages S1-S10', () => {
     it('S1: credit card purchase, English, variant ending with#', () => {
-      const msg = 'Your credit card ending with#1111 was charged for EGP 3150.00 at TEST ONLINE SHO on 11/09/26 at 10:15. Card available limit is EGP 10000.00. For more details, please visit https://cib.eg/mb';
+      const msg = 'Your credit card ending with#1111 was charged for EGP 3150.00 at TEST ONLINE SHO on 14/08/26 at 10:15. Card available limit is EGP 10000.00. For more details, please visit https://cib.eg/mb';
       const result = parseWithTemplates(BANK_CATALOG, 'CIB', msg);
 
       expect(result).toEqual({
@@ -41,7 +41,7 @@ describe('CIB SMS parsing', () => {
     });
 
     it('S2: credit card purchase, English, variant # (note USD)', () => {
-      const msg = 'Your credit card #1111 was charged for USD 21.60 at TEST SOFTWARE PL on 07/09/26 at 11:40. Available limit is 10000.00 and the available international limit to use is EGP 50000';
+      const msg = 'Your credit card #1111 was charged for USD 19.40 at TEST SOFTWARE PL on 05/08/26 at 11:40. Available limit is 10000.00 and the available international limit to use is EGP 50000';
       const result = parseWithTemplates(BANK_CATALOG, 'CIB', msg);
 
       expect(result).toEqual({
@@ -51,7 +51,7 @@ describe('CIB SMS parsing', () => {
           bank: 'CIB',
           event: 'purchase',
           currency: 'USD',
-          amount: '21.60',
+          amount: '19.40',
           merchant: 'TEST SOFTWARE PL',
           last4: '1111',
           availableAmount: null,
@@ -345,7 +345,7 @@ describe('CIB SMS parsing', () => {
     });
 
     it('handles amounts with thousands separators', () => {
-      const msg = 'Your credit card ending with#1111 was charged for EGP 1,250.00 at TEST ONLINE SHO on 11/09/26 at 10:15. Card available limit is EGP 10000.00.';
+      const msg = 'Your credit card ending with#1111 was charged for EGP 1,250.00 at TEST ONLINE SHO on 14/08/26 at 10:15. Card available limit is EGP 10000.00.';
       const result = parseWithTemplates(BANK_CATALOG, 'CIB', msg);
 
       expect(result).toMatchObject({
