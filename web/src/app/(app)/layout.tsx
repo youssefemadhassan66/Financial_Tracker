@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Logo } from '@/components/brand/logo';
 import { AppShellSkeleton } from '@/components/app-shell/app-shell-skeleton';
-import { MobileNav, SidebarNav } from '@/components/app-shell/nav';
-import { MobileUser, SidebarUser } from '@/components/app-shell/user-menu';
+import { MobileTabBar, SidebarNav } from '@/components/app-shell/nav';
+import { SidebarUser } from '@/components/app-shell/user-menu';
 import { useAuth } from '@/providers/auth-provider';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -40,20 +40,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b bg-background/95 px-4 pt-3 backdrop-blur-sm supports-[backdrop-filter]:bg-background/85 md:hidden">
-          <div className="flex h-11 items-center justify-between pb-3">
+        <header className="sticky top-0 z-30 bg-background/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-sm md:hidden">
+          <div className="flex h-14 items-center justify-between">
             <Link href="/dashboard" aria-label="Finance, go to dashboard" className="rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
               <Logo />
             </Link>
-            <MobileUser user={user} logout={logout} />
+            <Link
+              href="/settings"
+              aria-label={`Settings for ${user.email}`}
+              className="grid size-9 place-items-center rounded-full bg-ink text-sm font-semibold text-ink-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              {user.email.trim().charAt(0).toUpperCase() || "?"}
+            </Link>
           </div>
-          <MobileNav />
         </header>
 
-        <main id="main" tabIndex={-1} className="flex-1 px-4 py-6 outline-none sm:px-6 md:px-10 md:py-10">
+        {/* Bottom padding on phones keeps the last row clear of the tab bar. */}
+        <main id="main" tabIndex={-1} className="flex-1 px-4 pt-2 pb-28 outline-none sm:px-6 md:px-10 md:py-10">
           <div className="mx-auto max-w-5xl">{children}</div>
         </main>
       </div>
+
+      <MobileTabBar user={user} logout={logout} />
     </div>
   );
 }

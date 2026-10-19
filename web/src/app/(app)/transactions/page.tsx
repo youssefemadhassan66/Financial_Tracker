@@ -146,6 +146,25 @@ function TransactionsContent() {
     else setMoveOpen(true);
   };
 
+  // The phone tab bar's + button links here with ?add=1: open the form once,
+  // then drop the parameter so Back or a refresh doesn't open it again.
+  const addRequested = searchParams.get('add') === '1';
+  const [handledAddRequest, setHandledAddRequest] = React.useState(false);
+  if (addRequested && !handledAddRequest) {
+    setHandledAddRequest(true);
+    setIdsWhenOpened(new Set(allTransactions.map((tx) => tx.id)));
+    setAddOpen(true);
+  } else if (!addRequested && handledAddRequest) {
+    setHandledAddRequest(false);
+  }
+  React.useEffect(() => {
+    if (!addRequested) return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete('add');
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [addRequested, searchParams, pathname, router]);
+
   const groupedTransactions = React.useMemo(() => {
     const groups: DayGroup[] = [];
     for (const tx of allTransactions) {

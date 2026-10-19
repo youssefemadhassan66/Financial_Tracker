@@ -21,7 +21,7 @@ export function AnalyticsSkeleton() {
       </div>
 
       {/* Main charts grid skeleton */}
-      <div className="grid items-start gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
         {/* Left column: Where the money went */}
         <div className="space-y-4 rounded-2xl border bg-card p-6">
           <div className="h-5 w-44 rounded bg-muted motion-safe:animate-pulse" />

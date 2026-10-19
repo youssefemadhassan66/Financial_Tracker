@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { AccentWord } from '@/components/accent-word';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FileText, MessageSquareText, Repeat } from 'lucide-react';
@@ -42,8 +43,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <Logo />
         </Link>
         <div className="max-w-md">
-          <h2 className="font-heading text-[2.1rem] leading-[1.15] font-semibold tracking-tight text-balance">
-            Know where your money goes, without typing a single expense.
+          <h2 className="font-display text-[2.1rem] leading-[1.15] tracking-tight text-balance">
+            Know where your money goes, <AccentWord>without typing</AccentWord> a single expense.
           </h2>
           <Stagger as="ul" className="mt-10 space-y-7">
             {steps.map(({ icon: Icon, title, body }, i) => (

@@ -5,7 +5,7 @@ import { RotateCw } from 'lucide-react';
 import type { PeriodPreset } from '@/lib/analytics-period';
 import type { Currency } from '@/lib/api/types';
 import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
+import { Segmented } from '@/components/ui/segmented';
 
 interface PresetOption {
   value: PeriodPreset;
@@ -51,62 +51,23 @@ export function AnalyticsControls({
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        {/* Period Presets Segmented Control */}
-        <div
-          role="radiogroup"
-          aria-label="Period preset"
-          className="inline-flex flex-wrap items-center gap-1 rounded-xl border bg-muted/40 p-1 text-sm"
-        >
-          {PRESETS.map((p) => {
-            const isSelected = preset === p.value;
-            return (
-              <button
-                key={p.value}
-                type="button"
-                role="radio"
-                aria-checked={isSelected}
-                onClick={() => onSelectPreset(p.value)}
-                className={cn(
-                  'rounded-lg px-3 py-1 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  isSelected
-                    ? 'bg-card text-foreground shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
+        <Segmented
+          label="Period preset"
+          options={PRESETS}
+          value={preset}
+          onChange={onSelectPreset}
+          size="sm"
+        />
 
-        {/* Currency Switch Segmented Control */}
         {currencies.length > 0 && (
-          <div
-            role="radiogroup"
-            aria-label="Currency"
-            className="inline-flex items-center gap-1 self-start rounded-xl border bg-muted/40 p-1 text-sm lg:self-auto"
-          >
-            {currencies.map((curr) => {
-              const isSelected = selectedCurrency === curr;
-              return (
-                <button
-                  key={curr}
-                  type="button"
-                  role="radio"
-                  aria-checked={isSelected}
-                  onClick={() => onSelectCurrency(curr)}
-                  className={cn(
-                    'rounded-lg px-3.5 py-1 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    isSelected
-                      ? 'bg-card text-foreground shadow-xs'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {curr}
-                </button>
-              );
-            })}
-          </div>
+          <Segmented
+            label="Currency"
+            options={currencies.map((c) => ({ value: c, label: c }))}
+            value={selectedCurrency}
+            onChange={onSelectCurrency}
+            size="sm"
+            className="self-start lg:self-auto"
+          />
         )}
       </div>
 
