@@ -46,7 +46,7 @@ describe('MobileTabBar', () => {
     renderBar();
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     const dialog = await screen.findByRole('dialog');
-    for (const label of ['Accounts', 'Subscriptions', 'SMS inbox', 'Settings']) {
+    for (const label of ['Accounts', 'Subscriptions', 'Plans', 'SMS inbox', 'Settings']) {
       expect(within(dialog).getByRole('link', { name: new RegExp(label) })).toBeInTheDocument();
     }
     expect(within(dialog).queryByRole('link', { name: /Dashboard/ })).not.toBeInTheDocument();

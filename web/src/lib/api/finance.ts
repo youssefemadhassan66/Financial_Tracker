@@ -1,6 +1,8 @@
 import { apiFetch } from './client';
 import type {
   AccountDto,
+  BudgetsView,
+  InstallmentsView,
   CardStatementView,
   CategoryAnalytics,
   CategoryRecord,
@@ -132,4 +134,17 @@ export const subscriptionSuggestionsQuery = {
 export const smsQuery = {
   queryKey: ['sms', { limit: 200 }] as const,
   queryFn: () => apiFetch<{ messages: RawMessageView[] }>('/api/sms?limit=200').then((r) => r.messages),
+};
+
+/** Budgets of a month ("2026-10"); the current month when absent. */
+export function budgetsQuery(month?: string) {
+  return {
+    queryKey: ['budgets', { month: month ?? null }] as const,
+    queryFn: () => apiFetch<BudgetsView>(month ? `/api/budgets?month=${month}` : '/api/budgets'),
+  };
+}
+
+export const installmentsQuery = {
+  queryKey: ['installments'] as const,
+  queryFn: () => apiFetch<InstallmentsView>('/api/installments'),
 };

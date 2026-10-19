@@ -17,6 +17,7 @@ import {
   Plus,
   Repeat,
   Settings,
+  Target,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -32,6 +33,7 @@ export const navItems: { href: string; label: string; icon: LucideIcon; soon?: b
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/accounts', label: 'Accounts', icon: Wallet },
   { href: '/subscriptions', label: 'Subscriptions', icon: Repeat },
+  { href: '/plans', label: 'Plans', icon: Target },
   { href: '/sms', label: 'SMS inbox', icon: MessageSquareText },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
