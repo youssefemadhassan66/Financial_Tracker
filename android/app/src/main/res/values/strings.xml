@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Masroof</string>
+    <string name="setup_title">Phone setup</string>
+
+    <string name="error_title">Can\'t reach your Masroof app</string>
+    <string name="error_detail">Tried %1$s. Make sure Start Masroof is running on your computer and this phone is on the same Wi-Fi.</string>
+    <string name="retry">Try again</string>
+
+    <string name="server_heading">1. Your Masroof address</string>
+    <string name="server_help">The address shown by Start Masroof on your computer, like http://192.168.1.20:3001.</string>
+    <string name="server_hint">Address</string>
+    <string name="server_test">Test connection</string>
+    <string name="server_testing">Testing…</string>
+    <string name="server_ok">Connected. This phone can reach your Masroof app.</string>
+    <string name="server_fail">Can\'t reach it. Is Start Masroof running, and is this phone on the same Wi-Fi?</string>
+    <string name="server_invalid">Enter an address like http://192.168.1.20:3001</string>
+
+    <string name="key_heading">2. Phone key</string>
+    <string name="key_help">Easiest: open the app, go to Settings, Connect a phone, then tap \"Use on this phone\". Or paste a key here.</string>
+    <string name="key_hint">Paste device key</string>
+    <string name="key_save">Save key</string>
+    <string name="key_remove">Remove key</string>
+    <string name="key_missing">No key yet. SMS will wait on this phone until you add one.</string>
+    <string name="key_saved">Key saved (encrypted on this phone).</string>
+    <string name="key_rejected">The server refused this key. It was probably revoked: add a new one.</string>
+
+    <string name="sms_heading">3. Bank SMS</string>
+    <string name="sms_allowed">SMS access allowed. Bank messages are sent automatically.</string>
+    <string name="sms_not_allowed">SMS access not allowed yet.</string>
+    <string name="sms_allow">Allow SMS access</string>
+    <string name="senders_hint">Bank sender names</string>
+    <string name="senders_help">Only SMS from these senders leave your phone. Separate with commas.</string>
+    <string name="restricted_help">If Android says the setting is restricted: open App info, tap the ⋮ menu, choose \"Allow restricted settings\", then come back and tap Allow SMS access again.</string>
+    <string name="open_app_info">Open App info</string>
+
+    <string name="status_heading">4. Status</string>
+    <string name="send_now">Send waiting messages now</string>
+    <string name="import_inbox">Import bank SMS from the last 30 days</string>
+    <string name="sending">Sending…</string>
+    <string name="retry_skipped">Send set-aside messages again</string>
+    <string name="last_sent">Last sent %1$s.</string>
+    <string name="never_sent">Nothing sent yet.</string>
+    <string name="done">Save and open Masroof</string>
+
+    <plurals name="waiting">
+        <item quantity="one">%d message waiting to send.</item>
+        <item quantity="other">%d messages waiting to send.</item>
+    </plurals>
+    <plurals name="skipped">
+        <item quantity="one">%d message set aside after the server refused it.</item>
+        <item quantity="other">%d messages set aside after the server refused them.</item>
+    </plurals>
+    <plurals name="imported">
+        <item quantity="one">%d bank message queued.</item>
+        <item quantity="other">%d bank messages queued.</item>
+    </plurals>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  While the app runs on the user's computer it is reached over plain http on
+  the home Wi-Fi (http://192.168.x.x:3001), so cleartext must be allowed.
+  The address is chosen by the user at runtime, so it can't be listed here.
+  Once the app is served over HTTPS, set this to false.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
