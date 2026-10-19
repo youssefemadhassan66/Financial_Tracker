@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Finance" parent="Theme.Material3.DayNight">
+        <item name="colorPrimary">#9FA0F0</item>
+        <item name="colorOnPrimary">#1B1A5C</item>
+        <item name="colorSecondaryContainer">#2E2D63</item>
+        <item name="colorOnSecondaryContainer">#E4E3FA</item>
+        <item name="android:colorBackground">@color/surface_dark</item>
+    </style>
+</resources>
