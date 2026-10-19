@@ -2,7 +2,7 @@ import { AccentWord } from '@/components/accent-word';
 import { cn } from '@/lib/utils';
 
 /**
- * The title block every app page starts with: a serif title, optionally ending
+ * The title block every app page starts with: a bold title, optionally ending
  * in one highlighted word ("Good *evening*"). Actions sit at the end on wide screens.
  */
 export function PageHeader({
@@ -21,7 +21,7 @@ export function PageHeader({
   return (
     <header className={cn('flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between', className)}>
       <div className="space-y-1.5">
-        <h1 className="font-display text-[2.1rem] leading-[1.1] tracking-[-0.01em] text-balance sm:text-[2.4rem]">
+        <h1 className="font-display text-[1.9rem] leading-[1.1] font-extrabold tracking-[-0.03em] text-balance sm:text-[2.25rem]">
           {title}
           {titleAccent && (
             <>

@@ -79,7 +79,7 @@ export default function RegisterPage() {
 
   return (
     <FadeIn>
-      <h1 className="font-display text-[1.7rem] leading-tight tracking-tight">Create your account</h1>
+      <h1 className="font-display font-extrabold text-[1.7rem] leading-tight tracking-[-0.03em]">Create your account</h1>
       <p className="mt-1.5 text-sm text-muted-foreground">Free, private, and set up in a minute.</p>
 
       <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-5">

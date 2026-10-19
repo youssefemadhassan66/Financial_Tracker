@@ -59,7 +59,7 @@ export default function LoginPage() {
 
   return (
     <FadeIn>
-      <h1 className="font-display text-[1.7rem] leading-tight tracking-tight">Welcome back</h1>
+      <h1 className="font-display font-extrabold text-[1.7rem] leading-tight tracking-[-0.03em]">Welcome back</h1>
       <p className="mt-1.5 text-sm text-muted-foreground">Log in to see what your bank sent today.</p>
 
       <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-5">

@@ -12,7 +12,7 @@
 # (docker, npm, git) would otherwise abort the script. Each step checks its
 # own exit code instead.
 $ErrorActionPreference = 'Continue'
-$Host.UI.RawUI.WindowTitle = 'Finance - starting'
+$Host.UI.RawUI.WindowTitle = 'Masroof - starting'
 
 $Web = Split-Path -Parent $PSScriptRoot
 $Api = Join-Path (Split-Path -Parent $Web) '46-financial_app'
@@ -66,7 +66,7 @@ function Get-LanAddress {
 if (-not (Test-Path (Join-Path $Api 'package.json'))) { Fail "backend folder not found at $Api" }
 
 Say ''
-Say '  Finance' 'Cyan'
+Say '  Masroof' 'Cyan'
 Say '  Starting your app...' 'Cyan'
 Say ''
 
@@ -103,13 +103,13 @@ Say '[2/3] API'
 if (Test-Port $ApiPort) {
   Say "      already running on port $ApiPort" 'Green'
 } else {
-  $apiCommand = "`$Host.UI.RawUI.WindowTitle = 'Finance API (keep open)'; " +
+  $apiCommand = "`$Host.UI.RawUI.WindowTitle = 'Masroof API (keep open)'; " +
     "`$env:PORT = '$ApiPort'; `$env:CORS_ORIGIN = '$origins'; " +
     "Set-Location '$Api'; npm run dev"
   $p = Start-Process powershell -WindowStyle Minimized -PassThru `
     -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $apiCommand)
   $pids += $p.Id
-  if (-not (Wait-Http "http://localhost:$ApiPort/api/auth/me" 90)) { Fail 'the API did not answer. Open the minimized "Finance API" window to see why.' }
+  if (-not (Wait-Http "http://localhost:$ApiPort/api/auth/me" 90)) { Fail 'the API did not answer. Open the minimized "Masroof API" window to see why.' }
   Say '      ready' 'Green'
 }
 
@@ -139,13 +139,13 @@ if (Test-Port $WebPort) {
     Set-Content -Path $stampFile -Value $stamp
   }
 
-  $webCommand = "`$Host.UI.RawUI.WindowTitle = 'Finance web app (keep open)'; " +
+  $webCommand = "`$Host.UI.RawUI.WindowTitle = 'Masroof web app (keep open)'; " +
     "`$env:API_PROXY_TARGET = 'http://localhost:$ApiPort'; " +
     "Set-Location '$Web'; npx next start -p $WebPort -H 0.0.0.0"
   $p = Start-Process powershell -WindowStyle Minimized -PassThru `
     -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $webCommand)
   $pids += $p.Id
-  if (-not (Wait-Http "http://localhost:$WebPort/" 90)) { Fail 'the web app did not answer. Open the minimized "Finance web app" window to see why.' }
+  if (-not (Wait-Http "http://localhost:$WebPort/" 90)) { Fail 'the web app did not answer. Open the minimized "Masroof web app" window to see why.' }
   Say '      ready' 'Green'
 }
 
@@ -154,7 +154,7 @@ if ($pids.Count -gt 0) { Set-Content -Path $PidFile -Value $pids }
 
 Start-Process "http://localhost:$WebPort/dashboard"
 
-$Host.UI.RawUI.WindowTitle = 'Finance - running'
+$Host.UI.RawUI.WindowTitle = 'Masroof - running'
 Say ''
 Say '  Your app is running.' 'Green'
 Say ''
@@ -164,7 +164,7 @@ if ($lan) {
   Say '                     (same Wi-Fi; then Share > Add to Home Screen for the app icon)'
 }
 Say ''
-Say '  Keep the two minimized Finance windows open while you use it.'
-Say '  To stop everything: double-click "Stop Finance".'
+Say '  Keep the two minimized Masroof windows open while you use it.'
+Say '  To stop everything: double-click "Stop Masroof".'
 Say ''
 Read-Host 'Press Enter to close this window (the app keeps running)'

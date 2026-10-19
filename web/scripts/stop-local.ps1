@@ -12,7 +12,7 @@ if (Test-Path $PidFile) {
     # Only a window this app opened: after a restart the same number can
     # belong to an unrelated program.
     $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $id" -ErrorAction SilentlyContinue
-    if ($proc -and $proc.CommandLine -like '*Finance*') { cmd /c "taskkill /PID $id /T /F >nul 2>&1" }
+    if ($proc -and ($proc.CommandLine -like '*Masroof*' -or $proc.CommandLine -like '*Finance*')) { cmd /c "taskkill /PID $id /T /F >nul 2>&1" }
   }
   Remove-Item $PidFile -ErrorAction SilentlyContinue
 }
@@ -24,6 +24,6 @@ foreach ($port in 3001, 3002) {
 }
 
 Write-Host ''
-Write-Host '  Finance is stopped.' -ForegroundColor Green
+Write-Host '  Masroof is stopped.' -ForegroundColor Green
 Write-Host ''
 Start-Sleep -Seconds 2

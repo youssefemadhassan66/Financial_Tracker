@@ -39,11 +39,11 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <aside className="hidden flex-col justify-between bg-sidebar px-12 py-10 lg:flex xl:px-16">
-        <Link href="/" aria-label="Finance home" className="self-start rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <Link href="/" aria-label="Masroof home" className="self-start rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
           <Logo />
         </Link>
         <div className="max-w-md">
-          <h2 className="font-display text-[2.1rem] leading-[1.15] tracking-tight text-balance">
+          <h2 className="font-display font-extrabold text-[2.1rem] leading-[1.15] tracking-[-0.03em] text-balance">
             Know where your money goes, <AccentWord>without typing</AccentWord> a single expense.
           </h2>
           <Stagger as="ul" className="mt-10 space-y-7">
@@ -67,7 +67,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </aside>
 
       <main className="flex flex-col px-5 py-8 sm:px-8 lg:justify-center lg:py-10">
-        <Link href="/" aria-label="Finance home" className="self-start rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 lg:hidden">
+        <Link href="/" aria-label="Masroof home" className="self-start rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 lg:hidden">
           <Logo />
         </Link>
         <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-10 lg:flex-none lg:py-0">
