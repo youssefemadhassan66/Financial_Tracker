@@ -281,6 +281,26 @@ export interface CardStatementView {
   lineCount: number;
   unmatchedPayments: number;
   importedAt: string;
+  /** The kept PDF this month was read from; null when there is none. */
+  fileId: string | null;
+}
+
+/** POST /api/accounts/:id/statements */
+export interface StatementImportOutcome {
+  statements: StatementImportResult[];
+  installmentPlans: { added: number; alreadyKnown: number };
+  fileId: string;
+}
+
+/** GET /api/statement-files: a kept statement PDF, without its bytes. */
+export interface StatementFileDto {
+  id: string;
+  accountId: string;
+  fileName: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  /** "2026-09", newest first. */
+  periods: string[];
 }
 
 // Subscription suggestions (GET /api/subscriptions/suggestions)

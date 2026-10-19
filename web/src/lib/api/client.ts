@@ -20,6 +20,8 @@ export interface ApiFetchOptions {
   body?: unknown;
   headers?: HeadersInit;
   credentials?: RequestCredentials;
+  /** 'blob' for a file (a statement PDF); JSON otherwise. */
+  responseType?: 'json' | 'blob';
 }
 
 async function parseResponseBody(response: Response): Promise<unknown> {
@@ -88,7 +90,7 @@ async function executeFetch<T>(
   }
 
   if (!headers.has('Accept')) {
-    headers.set('Accept', 'application/json');
+    headers.set('Accept', init?.responseType === 'blob' ? '*/*' : 'application/json');
   }
 
   const currentToken = getAccessToken();
@@ -172,5 +174,8 @@ async function executeFetch<T>(
     throw parseApiError(response.status, errorBody);
   }
 
+  if (init?.responseType === 'blob') {
+    return (await response.blob()) as T;
+  }
   return (await response.json()) as T;
 }

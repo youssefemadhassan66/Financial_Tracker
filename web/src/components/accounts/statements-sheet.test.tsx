@@ -34,11 +34,26 @@ const imported: CardStatementView = {
   lineCount: 20,
   unmatchedPayments: 0,
   importedAt: '2026-10-04T12:00:00.000Z',
+  fileId: 'file-1',
 };
 
 function pdfFile(name = 'statement.pdf') {
   return new File(['%PDF-1.4 fake'], name, { type: 'application/pdf' });
 }
+
+vi.mock('pdfjs-dist', () => ({
+  GlobalWorkerOptions: {},
+  getDocument: () => ({
+    destroy: vi.fn(),
+    promise: Promise.resolve({
+      numPages: 2,
+      getPage: async () => ({
+        getViewport: ({ scale }: { scale: number }) => ({ width: 600 * scale, height: 800 * scale }),
+        render: () => ({ promise: Promise.resolve() }),
+      }),
+    }),
+  }),
+}));
 
 describe('StatementsSheet', () => {
   let client: QueryClient;
@@ -56,8 +71,11 @@ describe('StatementsSheet', () => {
           list = [imported];
           return {
             statements: [{ period: '2026-09', status: 'imported', confirmed: 0, created: 20, unmatchedPayments: 6, pricedSms: 0 }],
+            installmentPlans: { added: 1, alreadyKnown: 0 },
+            fileId: 'file-1',
           } as unknown as T;
         }
+        if (path === '/api/statement-files/file-1/content') return new Blob(['%PDF-1.4 fake']) as unknown as T;
         throw new Error(`Unhandled apiFetch path: ${path}`);
       });
   });
@@ -89,16 +107,34 @@ describe('StatementsSheet', () => {
       expect(apiFetchSpy).toHaveBeenCalledWith('/api/accounts/acc-1/statements', {
         method: 'POST',
         body: file,
-        headers: { 'Content-Type': 'application/pdf' },
+        headers: { 'Content-Type': 'application/pdf', 'X-File-Name': 'statement.pdf' },
       }),
     );
     expect(await screen.findByText(/20 new transactions added\. 6 card payments have no matching message yet\./)).toBeInTheDocument();
     expect(toast.success).toHaveBeenCalledWith('Statement imported');
-    for (const key of ['statements', 'transactions', 'accounts', 'analytics', 'subscriptions']) {
+    expect(screen.getByText(/1 installment plan added to Plans./)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'See plans' })).toHaveAttribute('href', '/plans?tab=installments');
+    for (const key of ['statements', 'statement-files', 'transactions', 'accounts', 'analytics', 'subscriptions', 'installments']) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: [key] });
     }
+    expect(await screen.findByRole('button', { name: 'Open the September 2026 PDF' })).toBeInTheDocument();
+  });
+
+  it('opens a kept statement inside the app, fetched with the token', async () => {
+    list = [imported];
+    renderIt();
+    fireEvent.click(await screen.findByRole('button', { name: 'Open the September 2026 PDF' }));
+    expect(await screen.findByRole('img', { name: 'Page 1 of 2' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Page 2 of 2' })).toBeInTheDocument();
+    expect(screen.getByText(/2 pages. Only you can open this file./)).toBeInTheDocument();
+    expect(apiFetchSpy).toHaveBeenCalledWith('/api/statement-files/file-1/content', { responseType: 'blob' });
+  });
+
+  it('shows the line count for a month whose PDF was not kept', async () => {
+    list = [{ ...imported, fileId: null }];
+    renderIt();
     expect(await screen.findByText('20 lines')).toBeInTheDocument();
-    expect(screen.getByText('September 2026', { selector: 'span' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open the/ })).not.toBeInTheDocument();
   });
 
   it('refuses a non-PDF before uploading', async () => {

@@ -9,6 +9,7 @@ import {
   ChartColumn,
   ChevronRight,
   Ellipsis,
+  FileText,
   House,
   LayoutDashboard,
   LoaderCircle,
@@ -34,6 +35,7 @@ export const navItems: { href: string; label: string; icon: LucideIcon; soon?: b
   { href: '/accounts', label: 'Accounts', icon: Wallet },
   { href: '/subscriptions', label: 'Subscriptions', icon: Repeat },
   { href: '/plans', label: 'Plans', icon: Target },
+  { href: '/statements', label: 'Statements', icon: FileText },
   { href: '/sms', label: 'SMS inbox', icon: MessageSquareText },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];

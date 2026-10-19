@@ -1,10 +1,12 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, LoaderCircle, Upload } from 'lucide-react';
+import { Eye, FileText, LoaderCircle, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { FormAlert } from '@/components/auth/auth-form-parts';
+import { PdfViewerSheet, type PdfViewerFile } from '@/components/statements/pdf-viewer-sheet';
 import { RowsSkeleton, SectionError } from '@/components/dashboard/section';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,9 +19,10 @@ import {
 import { apiFetch } from '@/lib/api/client';
 import { statementsQuery } from '@/lib/api/finance';
 import { toFormErrors } from '@/lib/api/form-errors';
-import type { AccountDto, StatementImportResult } from '@/lib/api/types';
+import type { AccountDto, StatementImportOutcome } from '@/lib/api/types';
 import { formatCalendarDay, formatMoney } from '@/lib/format';
 import { checkStatementFile, describeImport, formatStatementPeriod } from '@/lib/statement-file';
+import { describePlans } from '@/lib/statement-files';
 
 export interface StatementsSheetProps {
   account: AccountDto | null;
@@ -34,7 +37,8 @@ export function StatementsSheet({ account, open, onOpenChange }: StatementsSheet
   const [file, setFile] = React.useState<File | null>(null);
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [results, setResults] = React.useState<StatementImportResult[] | null>(null);
+  const [results, setResults] = React.useState<StatementImportOutcome | null>(null);
+  const [viewing, setViewing] = React.useState<PdfViewerFile | null>(null);
 
   const statements = useQuery({
     ...statementsQuery(account?.id ?? ''),
@@ -76,17 +80,19 @@ export function StatementsSheet({ account, open, onOpenChange }: StatementsSheet
     setPending(true);
     setError(null);
     try {
-      const res = await apiFetch<{ statements: StatementImportResult[] }>(
-        `/api/accounts/${encodeURIComponent(account.id)}/statements`,
-        { method: 'POST', body: file, headers: { 'Content-Type': 'application/pdf' } },
-      );
-      setResults(res.statements);
+      const res = await apiFetch<StatementImportOutcome>(`/api/accounts/${encodeURIComponent(account.id)}/statements`, {
+        method: 'POST',
+        body: file,
+        // The name is shown in the statements list; the server never uses it as a path.
+        headers: { 'Content-Type': 'application/pdf', 'X-File-Name': encodeURIComponent(file.name) },
+      });
+      setResults(res);
       setFile(null);
       if (inputRef.current) inputRef.current.value = '';
       // An import can add transactions, price foreign charges and link
       // subscriptions, so everything built from them refreshes.
       await Promise.all(
-        ['statements', 'transactions', 'accounts', 'analytics', 'subscriptions'].map((key) =>
+        ['statements', 'statement-files', 'transactions', 'accounts', 'analytics', 'subscriptions', 'installments'].map((key) =>
           queryClient.invalidateQueries({ queryKey: [key] }),
         ),
       );
@@ -152,11 +158,19 @@ export function StatementsSheet({ account, open, onOpenChange }: StatementsSheet
 
           {results && (
             <div role="status" className="space-y-2 rounded-xl border border-primary/30 bg-accent/40 p-4 text-sm">
-              {results.map((r) => (
+              {results.statements.map((r) => (
                 <p key={r.period}>
                   <span className="font-medium">{formatStatementPeriod(r.period)}:</span> {describeImport(r)}
                 </p>
               ))}
+              {describePlans(results.installmentPlans) !== null && (
+                <p>
+                  {describePlans(results.installmentPlans)}{' '}
+                  <Link href="/plans?tab=installments" className="font-medium underline underline-offset-4">
+                    See plans
+                  </Link>
+                </p>
+              )}
             </div>
           )}
 
@@ -174,10 +188,23 @@ export function StatementsSheet({ account, open, onOpenChange }: StatementsSheet
               <ul className="divide-y rounded-xl border">
                 {statements.data.map((s) => (
                   <li key={s.id} className="space-y-1.5 px-4 py-3 text-sm">
-                    <p className="flex items-baseline justify-between gap-3">
-                      <span className="font-medium">{formatStatementPeriod(s.period)}</span>
-                      <span className="text-xs text-muted-foreground">{s.lineCount} lines</span>
-                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium">{formatStatementPeriod(s.period)}</p>
+                      {s.fileId !== null ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="-me-2 gap-1.5"
+                          aria-label={`Open the ${formatStatementPeriod(s.period)} PDF`}
+                          onClick={() => setViewing({ id: s.fileId!, fileName: `${formatStatementPeriod(s.period)} statement` })}
+                        >
+                          <Eye aria-hidden="true" />
+                          Open PDF
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{s.lineCount} lines</span>
+                      )}
+                    </div>
                     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[0.8rem]">
                       <dt className="text-muted-foreground">Closing balance</dt>
                       <dd className="text-end tabular-nums">{formatMoney(s.closingBalance, 'EGP')}</dd>
@@ -205,6 +232,7 @@ export function StatementsSheet({ account, open, onOpenChange }: StatementsSheet
           </section>
         </div>
       </SheetContent>
+      <PdfViewerSheet file={viewing} open={viewing !== null} onOpenChange={(next) => !next && setViewing(null)} />
     </Sheet>
   );
 }
