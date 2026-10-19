@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Finance</string>
+    <string name="app_name">Masroof</string>
     <string name="setup_title">Phone setup</string>
 
-    <string name="error_title">Can\'t reach your Finance app</string>
-    <string name="error_detail">Tried %1$s. Make sure Start Finance is running on your computer and this phone is on the same Wi-Fi.</string>
+    <string name="error_title">Can\'t reach your Masroof app</string>
+    <string name="error_detail">Tried %1$s. Make sure Start Masroof is running on your computer and this phone is on the same Wi-Fi.</string>
     <string name="retry">Try again</string>
 
-    <string name="server_heading">1. Your Finance address</string>
-    <string name="server_help">The address shown by Start Finance on your computer, like http://192.168.1.20:3001.</string>
+    <string name="server_heading">1. Your Masroof address</string>
+    <string name="server_help">The address shown by Start Masroof on your computer, like http://192.168.1.20:3001.</string>
     <string name="server_hint">Address</string>
     <string name="server_test">Test connection</string>
     <string name="server_testing">Testing…</string>
-    <string name="server_ok">Connected. This phone can reach your Finance app.</string>
-    <string name="server_fail">Can\'t reach it. Is Start Finance running, and is this phone on the same Wi-Fi?</string>
+    <string name="server_ok">Connected. This phone can reach your Masroof app.</string>
+    <string name="server_fail">Can\'t reach it. Is Start Masroof running, and is this phone on the same Wi-Fi?</string>
     <string name="server_invalid">Enter an address like http://192.168.1.20:3001</string>
 
     <string name="key_heading">2. Phone key</string>
@@ -41,7 +41,7 @@
     <string name="retry_skipped">Send set-aside messages again</string>
     <string name="last_sent">Last sent %1$s.</string>
     <string name="never_sent">Nothing sent yet.</string>
-    <string name="done">Save and open Finance</string>
+    <string name="done">Save and open Masroof</string>
 
     <plurals name="waiting">
         <item quantity="one">%d message waiting to send.</item>

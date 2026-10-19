@@ -1,10 +1,10 @@
-# Finance for Android
+# Masroof for Android
 
-A small native app for the Finance project:
+A small native app for the Masroof project:
 
-- **The Finance web app, full screen**, with its own icon. Pull down to refresh.
+- **The Masroof web app, full screen**, with its own icon. Pull down to refresh.
 - **Bank SMS sent automatically.** When an SMS arrives from one of your bank
-  senders (default: `CIB`), the app sends it to your Finance server
+  senders (default: `CIB`), the app sends it to your Masroof server
   (`POST /api/ingest/sms` with the phone's device key). Every other SMS is ignored
   and never leaves the phone.
 - **Nothing is lost.** Messages wait in the app's private storage while the phone is
@@ -18,9 +18,9 @@ A small native app for the Finance project:
 
 1. Copy `app-release.apk` to the phone and open it. Allow installing from this source
    when Android asks.
-2. Open **Finance**. Phone setup opens the first time:
-   1. Address: the one Start Finance prints, e.g. `http://192.168.1.20:3001`. Tap **Test connection**.
-   2. Tap **Save and open Finance**, sign in, go to **Settings > Connect a phone**, create a key
+2. Open **Masroof**. Phone setup opens the first time:
+   1. Address: the one Start Masroof prints, e.g. `http://192.168.1.20:3001`. Tap **Test connection**.
+   2. Tap **Save and open Masroof**, sign in, go to **Settings > Connect a phone**, create a key
       and tap **Use on this phone**.
    3. Back in **Phone setup** (Settings > Phone setup): **Allow SMS access**.
       If Android says the setting is restricted (apps installed outside the Play Store):
