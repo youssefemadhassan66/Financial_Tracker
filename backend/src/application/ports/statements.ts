@@ -44,6 +44,40 @@ export interface CardStatementView {
   /** Card payments no SMS pair matched: they wait for you. */
   unmatchedPayments: number;
   importedAt: Date;
+  /** The PDF this month was read from, when it was kept. */
+  fileId: string | null;
+}
+
+/** A kept statement PDF, without its bytes. */
+export interface StatementFileInfo {
+  id: string;
+  accountId: AccountId;
+  fileName: string;
+  sizeBytes: number;
+  uploadedAt: Date;
+  /** "2026-07", newest first: the months read from it. */
+  periods: string[];
+}
+
+export interface StatementFileRepository {
+  /**
+   * Keeps the file once per user: the same bytes uploaded again reuse the
+   * row. Months of this account read from it that have no file yet are
+   * linked to it. Returns the file's id.
+   */
+  keep(input: {
+    userId: UserId;
+    accountId: AccountId;
+    fileName: string;
+    content: Uint8Array;
+    periods: CardStatement['period'][];
+  }): Promise<string>;
+  /** Newest first; only this account's files when one is given. */
+  listForUser(userId: UserId, accountId?: AccountId): Promise<StatementFileInfo[]>;
+  /** Null when there is no such file of this user. */
+  contentFor(id: string, userId: UserId): Promise<{ fileName: string; content: Uint8Array } | null>;
+  /** False when there is no such file of this user. Months it was read from stay. */
+  delete(id: string, userId: UserId): Promise<boolean>;
 }
 
 export interface CardStatementRepository {

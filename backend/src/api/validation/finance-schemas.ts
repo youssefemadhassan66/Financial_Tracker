@@ -42,6 +42,9 @@ export const createAccountBody = z.strictObject({
 
 export const accountIdParams = z.object({ id: uuidParam });
 
+export const statementFileParams = z.strictObject({ id: uuidParam });
+export const statementFileListQuery = z.strictObject({ accountId: uuidParam.optional() });
+
 export const updateAccountBody = z
   .strictObject({
     name: safeText({ max: 60 }).optional(),

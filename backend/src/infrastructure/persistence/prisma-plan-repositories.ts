@@ -25,28 +25,39 @@ function toPlan(row: InstallmentPlanRow): InstallmentPlan {
     accountId: row.accountId === null ? null : newAccountId(row.accountId),
     status: row.status,
     cancelledAt: row.cancelledAt,
+    externalKey: row.externalKey,
   });
+}
+
+function toRow(plan: InstallmentPlan) {
+  return {
+    id: plan.id,
+    userId: plan.userId,
+    name: plan.name,
+    provider: plan.provider,
+    installmentAmount: plan.installmentAmount.toDecimalString(),
+    currency: plan.installmentAmount.getCurrency(),
+    totalInstallments: plan.totalInstallments,
+    firstDueDate: fromCalendarDate(plan.firstDueDate),
+    accountId: plan.accountId,
+    status: plan.status,
+    cancelledAt: plan.cancelledAt,
+    externalKey: plan.externalKey,
+  };
 }
 
 export class PrismaInstallmentPlanRepository implements InstallmentPlanRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async create(plan: InstallmentPlan): Promise<void> {
-    await this.prisma.installmentPlan.create({
-      data: {
-        id: plan.id,
-        userId: plan.userId,
-        name: plan.name,
-        provider: plan.provider,
-        installmentAmount: plan.installmentAmount.toDecimalString(),
-        currency: plan.installmentAmount.getCurrency(),
-        totalInstallments: plan.totalInstallments,
-        firstDueDate: fromCalendarDate(plan.firstDueDate),
-        accountId: plan.accountId,
-        status: plan.status,
-        cancelledAt: plan.cancelledAt,
-      },
-    });
+    await this.prisma.installmentPlan.create({ data: toRow(plan) });
+  }
+
+  async createIfNew(plan: InstallmentPlan): Promise<boolean> {
+    // The unique (user_id, external_key) index decides, so two imports
+    // racing on the same statement still add the plan once.
+    const { count } = await this.prisma.installmentPlan.createMany({ data: [toRow(plan)], skipDuplicates: true });
+    return count === 1;
   }
 
   async save(plan: InstallmentPlan): Promise<void> {

@@ -2,7 +2,8 @@ import { Decimal } from 'decimal.js';
 import { calendarDate, type CalendarDate } from '../calendar-date.js';
 import { isCurrency } from '../currency.js';
 import { DomainError } from '../errors.js';
-import type { CardStatement, PdfPages, PdfTextRun, StatementLine } from './card-statement.js';
+import { MAX_INSTALLMENTS } from '../installment.js';
+import type { CardStatement, PdfPages, PdfTextRun, StatementInstallment, StatementLine } from './card-statement.js';
 
 /*
  * CIB credit card e-statement layout (x in points from the left edge).
@@ -14,12 +15,15 @@ import type { CardStatement, PdfPages, PdfTextRun, StatementLine } from './card-
  *                    | description x≈250 | amount right-aligned, "CR" = credit
  *   cashback block   undated rows about rewards earned, not money moved
  *   CLOSING BALANCE
+ *   installments     one row per plan, in narrow columns with no printed
+ *                    headers: name x≈44 (wrapping onto rows of its own) |
+ *                    start "dd/mm" | 3 amounts, the last one this month's
+ *                    payment | this payment's number | payments in all
  *
  * The table may continue on the next page. A long description wraps onto
  * a row of its own, with no date and no amount. A "00-00" row holds a note
  * about the line above (the original "USD21,60" of a dollar charge).
- * Everything outside summary and table — terms, loyalty text, the
- * installment table after CLOSING — is ignored.
+ * Everything else — terms, loyalty text — is ignored.
  */
 const DATE_COLUMN_END = 120;
 const POSTING_COLUMN_END = 220;
@@ -27,6 +31,17 @@ const DESCRIPTION_COLUMN_END = 480;
 const SUMMARY_LABEL_END = 170;
 /** A posting date sits about 1pt above its row; rows are ~13pt apart. */
 const SAME_ROW = 3;
+/** The next row of a wrapped plan name is about 13pt lower. */
+const WRAP_GAP = 18;
+/**
+ * A plan name piece reaching this close to the start-date column filled
+ * its line: the bank cut a word there ("TECHNOLO" + "GY"), so the next
+ * piece joins without a space.
+ */
+const CUT_WORD_MARGIN = 20;
+/** "11/08": the day an installment plan started. */
+const PLAN_START = /^(\d{2})\/(\d{2})$/;
+const PAYMENT_COUNT = /^\d{1,3}$/;
 
 const DAY_MONTH = /^(\d{2})-(\d{2})$/;
 /** "USD21,60": a comma before the cents, optional dots between thousands. */
@@ -51,11 +66,23 @@ const SUMMARY_LABELS: ReadonlyMap<string, SummaryField> = new Map([
 /** The first label of every statement: a new summary starts here. */
 const SUMMARY_START = 'type of credit card';
 
-type Summary = Omit<CardStatement, 'openingBalance' | 'closingBalance' | 'lines'>;
+type Summary = Omit<CardStatement, 'openingBalance' | 'closingBalance' | 'lines' | 'installments'>;
 
 interface Row {
   /** Runs of this row, left to right. */
   runs: PdfTextRun[];
+  y: number;
+}
+
+/** The installment plan whose name may still wrap onto the next rows. */
+interface WrappingPlan {
+  plan: StatementInstallment;
+  x: number;
+  y: number;
+  /** Where the start-date column begins. */
+  dateX: number;
+  /** Right edge of the last name piece. */
+  right: number;
 }
 
 /** The statement being read, between OPENING and CLOSING BALANCE. */
@@ -79,6 +106,7 @@ export function parseCibCardStatements(pages: PdfPages): CardStatement[] {
   const statements: CardStatement[] = [];
   let summary: Partial<Summary> = {};
   let table: Table | null = null;
+  let wrapping: WrappingPlan | null = null;
 
   for (const row of pages.flatMap(rowsOf)) {
     if (table === null) {
@@ -86,6 +114,21 @@ export function parseCibCardStatements(pages: PdfPages): CardStatement[] {
         table = { summary: completeSummary(summary), opening: balanceOf(row), lines: [], inCashback: false };
         continue;
       }
+      // Between a CLOSING BALANCE and the next statement's summary: the
+      // installment table of the statement that just closed.
+      const closed = statements.at(-1);
+      if (closed !== undefined && Object.keys(summary).length === 0) {
+        const plan = readInstallmentRow(row, closed);
+        if (plan !== null) {
+          closed.installments.push(plan.plan);
+          wrapping = plan;
+          continue;
+        }
+        if (wrapping !== null && continuesPlanName(row, wrapping)) {
+          continue;
+        }
+      }
+      wrapping = null;
       summary = readSummaryRow(row, summary);
       continue;
     }
@@ -116,7 +159,56 @@ function rowsOf(page: readonly PdfTextRun[]): Row[] {
       rows.push({ y: run.y, runs: [run] });
     }
   }
-  return rows.map((r) => ({ runs: r.runs.sort((a, b) => a.x - b.x) }));
+  return rows.map((r) => ({ runs: r.runs.sort((a, b) => a.x - b.x), y: r.y }));
+}
+
+/**
+ * A row of the installment table, or null when the row is anything else.
+ * Strict: exactly a name, a "dd/mm" start, three amounts and two payment
+ * counts. Loyalty and terms text never has that shape.
+ */
+function readInstallmentRow(row: Row, statement: CardStatement): WrappingPlan | null {
+  const texts = row.runs.map((r) => clean(r.text));
+  const start = texts.findIndex((t) => PLAN_START.test(t));
+  if (start < 1) return null;
+  const rest = texts.slice(start + 1);
+  if (rest.length !== 5) return null;
+  const [, , monthly, numberText, totalText] = rest as [string, string, string, string, string];
+  if (!rest.slice(0, 3).every((t) => TABLE_AMOUNT.test(t) && !/CR$/.test(t))) return null;
+  if (!PAYMENT_COUNT.test(numberText) || !PAYMENT_COUNT.test(totalText)) return null;
+  const number = Number(numberText);
+  const total = Number(totalText);
+  if (number < 1 || number > total || total > MAX_INSTALLMENTS) return null;
+  const { value } = readTableAmount(monthly, statement);
+  if (value.isZero()) return null;
+
+  const nameRuns = row.runs.slice(0, start);
+  const [, day, month] = PLAN_START.exec(texts[start]!)!;
+  return {
+    plan: {
+      description: clean(nameRuns.map((r) => r.text).join(' ')),
+      startDate: dateInPeriod(`${day}-${month}`, statement),
+      monthlyAmount: value.toFixed(2),
+      number,
+      total,
+    },
+    x: nameRuns[0]!.x,
+    y: row.y,
+    dateX: row.runs[start]!.x,
+    right: nameRuns.at(-1)!.right,
+  };
+}
+
+/** Adds a wrapped piece of a plan name ("FOR", "TECHNOLO", "GY") to it. */
+function continuesPlanName(row: Row, wrapping: WrappingPlan): boolean {
+  const [run, ...others] = row.runs;
+  if (run === undefined || others.length > 0) return false;
+  if (Math.abs(run.x - wrapping.x) > SAME_ROW || row.y - wrapping.y > WRAP_GAP) return false;
+  const cutWord = wrapping.right >= wrapping.dateX - CUT_WORD_MARGIN;
+  wrapping.plan.description = clean(`${wrapping.plan.description}${cutWord ? '' : ' '}${run.text}`);
+  wrapping.y = row.y;
+  wrapping.right = run.right;
+  return true;
 }
 
 const clean = (text: string) => text.replace(/\s+/g, ' ').trim();
@@ -296,7 +388,7 @@ function finish(summary: Summary, opening: Decimal, closing: Decimal, lines: Sta
         `${expected.toFixed(2)}, but it closes at ${closing.toFixed(2)}. Nothing was imported.`,
     );
   }
-  return { ...summary, openingBalance: opening.toFixed(2), closingBalance: closing.toFixed(2), lines };
+  return { ...summary, openingBalance: opening.toFixed(2), closingBalance: closing.toFixed(2), lines, installments: [] };
 }
 
 function rowError(summary: Summary, problem: string, text: string): DomainError {

@@ -95,6 +95,7 @@ describe('parseCibCardStatements', () => {
         },
         { transactionDate: '2026-07-07', postingDate: '2026-07-07', description: 'PAYMENT RECEIVED INTERNET', amount: '275.00', direction: 'credit', notes: [], original: null },
       ],
+      installments: [],
     });
   });
 
@@ -246,6 +247,63 @@ describe('parseCibCardStatements', () => {
       ...balance(530, 'CLOSING', '10.00'),
     ];
     expect(parseCibCardStatements([page])[0]!.lines[0]).toMatchObject({ notes: [note], original });
+  });
+
+describe('installment table', () => {
+    /** A plan row in the CIB layout: name | start | 3 amounts | payment n | of total. */
+    const planRow = (y: number, name: string, start: string, monthly: string, n: string, total: string): PdfTextRun[] => [
+      at(44, y, name),
+      at(117, y, start),
+      at(194, y, monthly),
+      at(271, y, '.00'),
+      at(347, y, monthly),
+      at(424, y, n),
+      at(513, y, total),
+    ];
+
+    it('reads each plan after CLOSING BALANCE, joining its wrapped name', () => {
+      const page = [
+        ...julyStatement(),
+        ...planRow(640, 'TEST', '11/06', '750.00', '2', '6'),
+        at(44, 653, 'PHONE'),
+        // Reaches the start-date column: the bank cut the word here.
+        { text: 'ELECTRONI', x: 44, right: 99, y: 666 },
+        at(44, 679, 'CS'),
+        ...planRow(700, 'TEST FRIDGE', '01/12', '1,200.50', '8', '12'),
+        // Loyalty text below the table is not part of a name.
+        at(30, 715, 'To view your loyalty points details'),
+      ];
+      expect(parseCibCardStatements([page])[0]!.installments).toEqual([
+        { description: 'TEST PHONE ELECTRONICS', startDate: '2026-06-11', monthlyAmount: '750.00', number: 2, total: 6 },
+        // December on the July statement: the year before.
+        { description: 'TEST FRIDGE', startDate: '2025-12-01', monthlyAmount: '1200.50', number: 8, total: 12 },
+      ]);
+    });
+
+    it('gives each statement its own plans', () => {
+      const june = [
+        ...summary({ period: 'Jun-26', due: '2026-07-10', total: '100.00' }),
+        ...balance(480, 'OPENING', '.00'),
+        ...line(493, '01-06', '02-06', 'TEST SHOP', '100.00'),
+        ...balance(520, 'CLOSING', '100.00'),
+        ...planRow(560, 'TEST TV', '05/05', '300.00', '2', '10'),
+      ];
+      const [first, second] = parseCibCardStatements([june, julyStatement()]);
+      expect(first!.installments.map((p) => p.description)).toEqual(['TEST TV']);
+      expect(second!.installments).toEqual([]);
+    });
+
+    it('ignores rows that only look like a plan', () => {
+      const page = [
+        ...julyStatement(),
+        // Payment 7 of 6, a zero payment, a credit, a missing count.
+        ...planRow(640, 'TEST A', '11/06', '750.00', '7', '6'),
+        ...planRow(660, 'TEST B', '11/06', '.00', '1', '6'),
+        ...planRow(680, 'TEST C', '11/06', '750.00 CR', '1', '6'),
+        ...planRow(700, 'TEST D', '11/06', '750.00', '1', '6').slice(0, -1),
+      ];
+      expect(parseCibCardStatements([page])[0]!.installments).toEqual([]);
+    });
   });
 
   it('finds no statement in a PDF that is not one', () => {

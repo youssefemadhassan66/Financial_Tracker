@@ -126,6 +126,7 @@ model User {
   cardStatements                   CardStatement[]
   subscriptionSuggestionDismissals SubscriptionSuggestionDismissal[]
   installmentPlans                 InstallmentPlan[]
+  statementFiles                   StatementFile[]
 
   @@map("users")
 }
@@ -230,6 +231,7 @@ model Account {
   transactions     Transaction[]
   subscriptions    Subscription[]
   installmentPlans InstallmentPlan[]
+  statementFiles   StatementFile[]
 
   @@index([userId])
   @@map("accounts")
@@ -298,11 +300,44 @@ model CardStatement {
 
   importedAt DateTime @default(now()) @map("imported_at") @db.Timestamptz(3)
 
+  /// The PDF this month was read from. Null for months imported before
+  /// files were kept, or after you deleted the file.
+  fileId String?        @map("file_id") @db.Uuid
+  file   StatementFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
   lines CardStatementLine[]
 
   @@unique([accountId, periodYear, periodMonth])
   @@index([userId])
+  @@index([fileId])
   @@map("card_statements")
+}
+
+/// An uploaded statement PDF, kept so you can open it again. Stored once
+/// per user however often it is uploaded (same bytes, same row). Only
+/// files that parsed as a statement are kept.
+model StatementFile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accountId String  @map("account_id") @db.Uuid
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// As the browser sent it; display only, never used as a path.
+  fileName  String @map("file_name")
+  sizeBytes Int    @map("size_bytes")
+  /// Hex SHA-256 of the content.
+  sha256    String @db.Char(64)
+  content   Bytes
+
+  uploadedAt DateTime @default(now()) @map("uploaded_at") @db.Timestamptz(3)
+
+  statements CardStatement[]
+
+  @@unique([userId, sha256])
+  @@index([accountId])
+  @@map("statement_files")
 }
 
 /// One line of a statement, and the transaction it matched or created.
@@ -710,9 +745,14 @@ model InstallmentPlan {
   status      InstallmentStatus @default(active)
   cancelledAt DateTime?         @map("cancelled_at") @db.Timestamptz(3)
 
+  /// Set for a plan read from a bank statement, so next month's statement
+  /// does not add it again. Null for plans added by hand.
+  externalKey String? @map("external_key")
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  @@unique([userId, externalKey])
   @@index([userId, status])
   @@map("installment_plans")
 }

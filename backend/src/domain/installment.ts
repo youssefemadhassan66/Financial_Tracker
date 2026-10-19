@@ -22,6 +22,21 @@ export interface InstallmentPlanProps {
   accountId: AccountId | null;
   status: InstallmentStatus;
   cancelledAt: Date | null;
+  /**
+   * Set when the plan was read from a bank statement: the same plan on
+   * next month's statement has the same key, so it is added only once.
+   * Null for a plan you added yourself.
+   */
+  externalKey: string | null;
+}
+
+/**
+ * When a statement plan's first payment was due: the statement bills
+ * payment `number`, due on the statement's due date, and payments are a
+ * month apart.
+ */
+export function firstDueDateFromStatement(statementDueDate: CalendarDate, number: number): CalendarDate {
+  return addMonthsClamped(statementDueDate, -(number - 1));
 }
 
 /**
@@ -36,7 +51,9 @@ export interface InstallmentPlanProps {
 export class InstallmentPlan {
   private constructor(private props: InstallmentPlanProps) {}
 
-  static create(props: Omit<InstallmentPlanProps, 'status' | 'cancelledAt'>): InstallmentPlan {
+  static create(
+    props: Omit<InstallmentPlanProps, 'status' | 'cancelledAt' | 'externalKey'> & { externalKey?: string | null },
+  ): InstallmentPlan {
     InstallmentPlan.validate(props);
     return new InstallmentPlan({
       ...props,
@@ -44,6 +61,7 @@ export class InstallmentPlan {
       provider: props.provider?.trim() || null,
       status: 'active',
       cancelledAt: null,
+      externalKey: props.externalKey ?? null,
     });
   }
 
@@ -74,6 +92,7 @@ export class InstallmentPlan {
   get accountId(): AccountId | null { return this.props.accountId; }
   get status(): InstallmentStatus { return this.props.status; }
   get cancelledAt(): Date | null { return this.props.cancelledAt; }
+  get externalKey(): string | null { return this.props.externalKey; }
 
   /** Final, like a subscription: the plan stays for history. */
   cancel(at: Date): void {

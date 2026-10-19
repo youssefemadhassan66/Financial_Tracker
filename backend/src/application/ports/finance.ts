@@ -113,6 +113,11 @@ export interface SubscriptionRepository {
 
 export interface InstallmentPlanRepository {
   create(plan: InstallmentPlan): Promise<void>;
+  /**
+   * Creates a plan read from a statement unless this user already has one
+   * with its externalKey (even a cancelled one). True when it was added.
+   */
+  createIfNew(plan: InstallmentPlan): Promise<boolean>;
   /** Saves the fields the entity lets change (status). */
   save(plan: InstallmentPlan): Promise<void>;
   findForUser(id: string, userId: UserId): Promise<InstallmentPlan | null>;

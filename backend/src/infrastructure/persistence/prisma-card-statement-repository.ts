@@ -155,6 +155,7 @@ export class PrismaCardStatementRepository implements CardStatementRepository {
       lineCount: r.lines.length,
       unmatchedPayments: r.lines.filter((l) => l.transactionId === null).length,
       importedAt: r.importedAt,
+      fileId: r.fileId,
     }));
   }
 }

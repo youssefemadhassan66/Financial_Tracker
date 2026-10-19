@@ -35,6 +35,23 @@ export interface StatementLine {
   original: { amount: string; currency: Currency } | null;
 }
 
+/**
+ * One row of the installment table printed after a statement: a purchase
+ * the bank split into equal monthly payments.
+ */
+export interface StatementInstallment {
+  /** What the plan is for, as printed (the merchant). */
+  description: string;
+  /** When the plan started. */
+  startDate: CalendarDate;
+  /** Decimal string: what this month's payment costs, interest included. */
+  monthlyAmount: string;
+  /** Which payment this statement bills (1 = the first). */
+  number: number;
+  /** How many payments the plan has in all. */
+  total: number;
+}
+
 /** One monthly credit card statement, as the bank printed it. */
 export interface CardStatement {
   /** Last 4 digits of the card the statement is for. */
@@ -51,4 +68,6 @@ export interface CardStatement {
   openingBalance: string;
   closingBalance: string;
   lines: StatementLine[];
+  /** The installment table after the lines; empty when there is none. */
+  installments: StatementInstallment[];
 }

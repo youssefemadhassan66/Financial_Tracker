@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InstallmentPlan } from '../../src/domain/installment.js';
+import { InstallmentPlan, firstDueDateFromStatement } from '../../src/domain/installment.js';
 import { Money } from '../../src/domain/money.js';
 import { calendarDate } from '../../src/domain/calendar-date.js';
 import { newUserId } from '../../src/domain/ids.js';
@@ -73,5 +73,15 @@ describe('InstallmentPlan', () => {
     expect(p.nextDueDate(d('2026-10-19'))).toBeNull();
     expect(p.remaining(d('2026-10-19')).isZero()).toBe(true);
     expect(() => p.cancel(new Date())).toThrow(DomainError);
+  });
+});
+
+describe('firstDueDateFromStatement', () => {
+  it('counts back from the payment the statement bills', () => {
+    expect(firstDueDateFromStatement(d('2026-10-10'), 2)).toBe('2026-09-10');
+    expect(firstDueDateFromStatement(d('2026-10-10'), 1)).toBe('2026-10-10');
+    // Across a year, and clamped to a short month.
+    expect(firstDueDateFromStatement(d('2026-03-31'), 2)).toBe('2026-02-28');
+    expect(firstDueDateFromStatement(d('2026-02-10'), 6)).toBe('2025-09-10');
   });
 });
